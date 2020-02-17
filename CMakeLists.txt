@@ -9,15 +9,20 @@ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMPILER_FLAGS}")
 # Find dependencies
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/modules")
 find_package (FUSE REQUIRED)
-find_package (Pmem REQUIRED)
-find_package (Threads REQUIRED)
 include_directories (${FUSE_INCLUDE_DIR} ${PMEM_INCLUDE_DIR} src/include)
 
 add_executable (galois
     src/main.c
+
+    src/global/config.c
+
+    src/ecal/ecal.c
+
+    src/network/rdma.c
 )
 
 target_link_libraries (galois
-    ${FUSE_LIBRARIES}
-    ${PMEM_LIBRARIES}
+    ${FUSE_LIBS}
+    pmem pmemobj pmemblk
+    ibverbs
 )

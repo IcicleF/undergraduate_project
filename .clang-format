@@ -1,8 +1,9 @@
 ---
 BasedOnStyle: Google
-ColumnLimit: '0'
-IndentWidth: '4'
+ColumnLimit: 0
+IndentWidth: 4
 NamespaceIndentation: Inner
 UseTab: Never
 
+BreakBeforeBraces: Stroustrup
 ...

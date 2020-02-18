@@ -26,6 +26,7 @@ int destroy_cluster_config(struct cluster_config *conf);
 
 struct node_config *find_conf_by_hostname(struct cluster_config *conf, const char *hostname);
 struct node_config *find_conf_by_ip(struct cluster_config *conf, in_addr_t ip_addr);
+struct node_config *find_conf_by_ip_str(struct cluster_config *conf, const char *ip_addr);
 struct node_config *find_my_conf(struct cluster_config *conf);
 
 /* Memory organization configuration */
@@ -50,6 +51,7 @@ struct fuse_cmd_config
 struct all_configs
 {
     struct cluster_config *cluster_conf;
+    struct node_config *my_node_conf;           /* Should point to one stored in cluster_conf */
     struct mem_config *mem_conf;
     struct fuse_cmd_config *fuse_cmd_conf;
 };

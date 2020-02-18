@@ -35,7 +35,7 @@ struct cm_conn_info
     uint32_t rkey;                          /* Remote key */
     uint32_t qpn;                           /* QP number */
     uint16_t lid;                           /* LID of the IB port */
-    uint8_t gid[16];                        /* GID */
+    uint32_t node_id;                       /* Remote Node ID */
 } __attribute__((packed));
 
 /* Store the RDMA connection data with a peer */
@@ -46,7 +46,6 @@ struct peer_conn_info
 
     struct cm_conn_info conn_data;
     int sock;                               /* TCP socket */
-    int node_id;                            /* Peer's node ID */
 };
 
 /* Store all necessary resources for RDMA connection with other nodes */
@@ -62,14 +61,19 @@ struct rdma_resource
     struct peer_conn_info peers[MAX_NODES];
 };
 
+int _sock_sync_data(int sock, int size, void *local_data, void *remote_data);
+
+
 int create_resources(struct rdma_resource *rs, struct all_configs *conf);
 int destroy_resources(struct rdma_resource *rs);
 
 int create_qp(struct rdma_resource *rs, struct peer_conn_info *peer);
-// int destroy_qp()   TODO
+int destroy_qp(struct rdma_resource *rs);
 
 int modify_qp_to_init(struct ibv_qp *qp, int ib_port);
 int modify_qp_to_rtr(struct ibv_qp *qp, int ib_port, struct peer_conn_info *peer);
 int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer);
+
+int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer);
 
 #endif // RDMA_H

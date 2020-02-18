@@ -111,6 +111,12 @@ struct node_config *find_conf_by_ip(struct cluster_config *conf, in_addr_t ip_ad
     return NULL;
 }
 
+struct node_config *find_conf_by_ip_str(struct cluster_config *conf, const char *ip_addr)
+{
+    in_addr_t ip = inet_addr(ip_addr);
+    return find_conf_by_ip(conf, ip);
+}
+
 struct node_config *find_my_conf(struct cluster_config *conf)
 {
     static char hostname[MAX_HOSTNAME_LEN];

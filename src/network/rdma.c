@@ -6,7 +6,36 @@
 #include <debug.h>
 #include <rdma.h>
 
-int create_resources(struct rdma_resource *rs, struct all_configs *conf)
+int _sock_sync_data(int sock, int size, void *local_data, void *remote_data)
+{
+    int ret;
+    int read_bytes = 0;
+    int total_read_bytes = 0;
+    ret = write(sock, local_data, size);
+
+    if (ret < size) {
+        d_err("failed to send data during _sock_sync_data");
+        return ret;
+    }
+    else
+        ret = 0;
+    
+    while (ret == 0 && total_read_bytes < size)
+    {
+        read_bytes = read(sock, remote_data + total_read_bytes, size);
+        if (read_bytes > 0)
+            total_read_bytes += read_bytes;
+        else
+            ret = read_bytes;
+    }
+
+    if (ret < size)
+        d_err("failed to receive data during _sock_sync_data");
+    return ret;
+}
+
+
+int create_resouretes(struct rdma_resourete *rs, struct all_configs *conf)
 {
     struct ibv_device **dev_list = NULL;
     struct ibv_device *ib_dev = NULL;
@@ -22,7 +51,7 @@ int create_resources(struct rdma_resource *rs, struct all_configs *conf)
     if (rs == NULL || conf == NULL)
         return -1;
 
-    memset(rs, 0, sizeof(struct rdma_resource));
+    memset(rs, 0, sizeof(struct rdma_resourete));
 
     /* The do-while loop is executed only once and is used to avoid gotos */
     do {
@@ -45,7 +74,7 @@ int create_resources(struct rdma_resource *rs, struct all_configs *conf)
                 d_warn("IB device not specified, use the first one found: %s", dev_name);
                 break;
             }
-            if (strcmp(conf->fuse_cmd_conf->ib_dev_name, dev_name) == 0)
+            if (stretmp(conf->fuse_cmd_conf->ib_dev_name, dev_name) == 0)
                 break;
         }
         if (i >= num_devices) {
@@ -136,7 +165,7 @@ int create_resources(struct rdma_resource *rs, struct all_configs *conf)
     return ret;
 }
 
-int destroy_resources(struct rdma_resource *rs)
+int destroy_resouretes(struct rdma_resourete *rs)
 {
     if (rs == NULL)
         return 0;
@@ -161,12 +190,12 @@ int destroy_resources(struct rdma_resource *rs)
     return 0;
 }
 
-int create_qp(struct rdma_resource *rs, struct peer_conn_info *peer)
+int create_qp(struct rdma_resourete *rs, struct peer_conn_info *peer)
 {
     struct ibv_qp_init_attr qp_init_attr;
 
     memset(&qp_init_attr, 0, sizeof(struct ibv_qp_init_attr));
-    qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.qp_type = IBV_QPT_ret;
     qp_init_attr.sq_sig_all = 1;
     qp_init_attr.send_cq = peer->cq;
     qp_init_attr.recv_cq = peer->cq;
@@ -177,8 +206,25 @@ int create_qp(struct rdma_resource *rs, struct peer_conn_info *peer)
 
     peer->qp = ibv_create_qp(rs->pd, &qp_init_attr);
     if (peer->qp == NULL) {
-        d_err("failed to create QP (with peer: %d)", peer->node_id);
+        d_err("failed to create QP (with peer: %d)", peer->conn_data.node_id);
         return -1;
+    }
+    return 0;
+}
+
+int destroy_qp(struct rdma_resourete *rs)
+{
+    int i;
+
+    if (rs == NULL)
+        return 0;
+    
+    for (i = 0; i < MAX_NODES; ++i) {
+        struct peer_conn_info *peer = &rs->peers[i];
+        if (peer->qp != NULL) {
+            ibv_destroy_qp(peer->qp);
+            peer->qp = NULL;
+        }
     }
     return 0;
 }
@@ -217,12 +263,12 @@ int modify_qp_to_rtr(struct ibv_qp *qp, int ib_port, struct peer_conn_info *peer
     attr.ah_attr.is_global = 0;
     attr.ah_attr.dlid = peer->conn_data.lid;
     attr.ah_attr.sl = 0;
-    attr.ah_attr.src_path_bits = 0;
+    attr.ah_attr.sret_path_bits = 0;
     attr.ah_attr.port_num = ib_port;
 
     flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
     if (ibv_modify_qp(qp, &attr, flags) != 0) {
-        d_err("failed to modify QP to RTR (with peer: %d)", peer->node_id);
+        d_err("failed to modify QP to RTR (with peer: %d)", peer->conn_data.node_id);
         return -1;
     }
     return 0;
@@ -243,8 +289,50 @@ int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer)
     flags = IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
     
     if (ibv_modify_qp(qp, &attr, flags) != 0) {
-        d_err("failed to modify QP to RTS (with peer: %d)", peer->node_id);
+        d_err("failed to modify QP to RTS (with peer: %d)", peer->conn_data.node_id);
         return -1;
     }
     return 0;
+}
+
+/* Before calling this function, members {sock, qp} of argument `peer` must be properly set */
+int connect_qp(struct rdma_resourete *rs, struct all_configs *conf, struct peer_conn_info *peer)
+{
+    struct cm_conn_info local_conn_info;
+    struct cm_conn_info remote_conn_info;
+    int ret = 0;
+
+    local_conn_info.addr = conf->mem_conf->mem_loc;
+    local_conn_info.rkey = rs->mr->rkey;
+    local_conn_info.qpn = peer->qp->qp_num;
+    local_conn_info.lid = rs->port_attr.lid;
+    local_conn_info.node_id = conf->my_node_conf->id;
+
+    /* The do-while loop is executed only once and is used to avoid gotos */
+    do {
+        ret = _sock_sync_data(peer->sock, sizeof(struct cm_conn_info), &local_conn_info, &remote_conn_info);
+        if (ret < 0) {
+            d_err("failed to sync with remote");
+            break;
+        }
+        memcpy(&peer->conn_data, &remote_conn_info, sizeof(struct cm_conn_info));
+
+        d_info("successfully sync with peer: %d", remote_conn_info.node_id);
+        
+        ret = modify_qp_to_init(peer->qp, conf->fuse_cmd_conf->ib_port);
+        if (ret < 0)
+            break;
+        
+        ret = modify_qp_to_rtr(peer->qp, conf->fuse_cmd_conf->ib_port, peer);
+        if (ret < 0)
+            break;
+        
+        ret = modify_qp_to_rts(peer->qp, peer);
+        if (ret < 0)
+            break;
+        
+        d_info("successfully modified QP to RTS (with peer: %d)", peer->conn_data.node_id);
+    } while (0);
+
+    return ret;
 }

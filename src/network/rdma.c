@@ -35,7 +35,7 @@ int _sock_sync_data(int sock, int size, void *local_data, void *remote_data)
 }
 
 
-int create_resouretes(struct rdma_resourete *rs, struct all_configs *conf)
+int create_resources(struct rdma_resource *rs, struct all_configs *conf)
 {
     struct ibv_device **dev_list = NULL;
     struct ibv_device *ib_dev = NULL;
@@ -51,7 +51,7 @@ int create_resouretes(struct rdma_resourete *rs, struct all_configs *conf)
     if (rs == NULL || conf == NULL)
         return -1;
 
-    memset(rs, 0, sizeof(struct rdma_resourete));
+    memset(rs, 0, sizeof(struct rdma_resource));
 
     /* The do-while loop is executed only once and is used to avoid gotos */
     do {
@@ -74,7 +74,7 @@ int create_resouretes(struct rdma_resourete *rs, struct all_configs *conf)
                 d_warn("IB device not specified, use the first one found: %s", dev_name);
                 break;
             }
-            if (stretmp(conf->fuse_cmd_conf->ib_dev_name, dev_name) == 0)
+            if (strcmp(conf->fuse_cmd_conf->ib_dev_name, dev_name) == 0)
                 break;
         }
         if (i >= num_devices) {
@@ -165,7 +165,7 @@ int create_resouretes(struct rdma_resourete *rs, struct all_configs *conf)
     return ret;
 }
 
-int destroy_resouretes(struct rdma_resourete *rs)
+int destroy_resources(struct rdma_resource *rs)
 {
     if (rs == NULL)
         return 0;
@@ -190,12 +190,12 @@ int destroy_resouretes(struct rdma_resourete *rs)
     return 0;
 }
 
-int create_qp(struct rdma_resourete *rs, struct peer_conn_info *peer)
+int create_qp(struct rdma_resource *rs, struct peer_conn_info *peer)
 {
     struct ibv_qp_init_attr qp_init_attr;
 
     memset(&qp_init_attr, 0, sizeof(struct ibv_qp_init_attr));
-    qp_init_attr.qp_type = IBV_QPT_ret;
+    qp_init_attr.qp_type = IBV_QPT_RC;
     qp_init_attr.sq_sig_all = 1;
     qp_init_attr.send_cq = peer->cq;
     qp_init_attr.recv_cq = peer->cq;
@@ -212,7 +212,7 @@ int create_qp(struct rdma_resourete *rs, struct peer_conn_info *peer)
     return 0;
 }
 
-int destroy_qp(struct rdma_resourete *rs)
+int destroy_qp(struct rdma_resource *rs)
 {
     int i;
 
@@ -263,7 +263,7 @@ int modify_qp_to_rtr(struct ibv_qp *qp, int ib_port, struct peer_conn_info *peer
     attr.ah_attr.is_global = 0;
     attr.ah_attr.dlid = peer->conn_data.lid;
     attr.ah_attr.sl = 0;
-    attr.ah_attr.sret_path_bits = 0;
+    attr.ah_attr.src_path_bits = 0;
     attr.ah_attr.port_num = ib_port;
 
     flags = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
@@ -296,13 +296,13 @@ int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer)
 }
 
 /* Before calling this function, members {sock, qp} of argument `peer` must be properly set */
-int connect_qp(struct rdma_resourete *rs, struct all_configs *conf, struct peer_conn_info *peer)
+int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer)
 {
     struct cm_conn_info local_conn_info;
     struct cm_conn_info remote_conn_info;
     int ret = 0;
 
-    local_conn_info.addr = conf->mem_conf->mem_loc;
+    local_conn_info.addr = (uint64_t)conf->mem_conf->mem_loc;
     local_conn_info.rkey = rs->mr->rkey;
     local_conn_info.qpn = peer->qp->qp_num;
     local_conn_info.lid = rs->port_attr.lid;

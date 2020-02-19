@@ -23,6 +23,7 @@ add_executable (galois
 
 target_link_libraries (galois
     ${FUSE_LIBS}
+    ${CMAKE_THREAD_LIBS_INIT}
     pmem pmemobj pmemblk
     ibverbs
 )

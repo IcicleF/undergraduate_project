@@ -1,12 +1,154 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <pthread.h>
 
 #include <config.h>
 #include <debug.h>
 #include <rdma.h>
 
-int _sock_sync_data(int sock, int size, void *local_data, void *remote_data)
+struct listener_args
+{
+    struct rdma_resource *rs;
+    struct all_configs *conf;
+    int sock;
+};
+
+/* This function MUST be called by pthread_create */
+void *_sock_accept(void *_args)
+{
+    struct listener_args *args = (struct listener_args *)_args;
+    struct sockaddr_in remote_addr;
+    int fd;
+    struct peer_conn_info peer;
+
+    /* Detach from caller process and run independently */
+    pthread_detach(pthread_self());
+
+    while (atomic_load(&args->conf->running)) {
+        fd = accept(args->sock, (struct sockaddr *)(&remote_addr), sizeof(struct sockaddr));
+        if (fd < 0) {
+            d_warn("cannot discover new incoming conecctions");
+            break;
+        }
+
+        memset(&peer, 0, sizeof(struct peer_conn_info));
+        peer.sock = fd;
+        if (create_qp(args->rs, &peer) < 0) {
+            d_err("failed to create QP, break");
+            break;
+        }
+        if (connect_qp(args->rs, args->conf, &peer) < 0) {
+            d_err("failed to connect QP, break");
+            break;
+        }
+
+        d_info("successfully connected with peer: %d", peer.conn_data.node_id);
+
+        memcpy(&args->rs->peers[peer.conn_data.node_id], &peer, sizeof(struct peer_conn_info));
+        // TODO: RDMA Receive
+    }
+     
+    pthread_exit(NULL);
+}
+
+int sock_listen(struct rdma_resource *rs, struct all_configs *conf)
+{
+    struct sockaddr_in local_addr;
+    int ret = 0;
+    int sock;
+    int on = 1;
+    pthread_t listener;
+    struct listener_args args;
+
+    memset(&local_addr, 0, sizeof(struct sockaddr_in));
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+    local_addr.sin_port = htons(conf->fuse_cmd_conf->tcp_port);
+
+    /* The do-while loop is executed only once and is used to avoid gotos */
+    do {
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) {
+            d_err("failed to create socket");
+            ret = -1;
+            break;
+        }
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
+            d_err("failed to set SO_REUSEADDR (errno: %d)", errno);
+            ret = -1;
+            break;
+        }
+        if (bind(sock, (struct sockaddr *)(&local_addr), sizeof(struct sockaddr)) < 0) {
+            d_err("failed to bind socket (errno: %d)", errno);
+            ret = -1;
+            break;
+        }
+
+        listen(sock, MAX_QUEUED_CONNS);
+        
+        args.rs = rs;
+        args.conf = conf;
+        args.sock = sock;
+        if (pthread_create(&listener, NULL, _sock_accept, &args) < 0) {
+            d_err("failed to create listener thread");
+            break;
+        }
+    } while (0);
+
+    if (ret != 0) {
+        if (sock >= 0) {
+            close(sock);
+            sock = -1;
+        }
+    }
+    return ret;
+}
+
+int sock_connect(struct rdma_resource *rs, struct peer_conn_info *peer, struct fuse_cmd_config *conf)
+{
+    struct sockaddr_in remote_addr;
+    struct timeval timeout = {
+        .tv_sec = 3,
+        .tv_usec = 0
+    };
+    int sock;
+    int remote_id = peer->conn_data.node_id;
+    struct node_config *remote_conf = find_conf_by_id(rs, remote_id);
+    int retries;
+
+    memset(&remote_addr, 0, sizeof(struct sockaddr_in));
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_addr.s_addr = remote_conf->ip_addr;
+    remote_addr.sin_port = htons(conf->tcp_port);
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        d_err("failed to create socket");
+        return -1;
+    }
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval)) < 0)
+        d_warn("failed to set socket timeout");
+    
+    for (retries = 1; retries <= MAX_CONN_RETRIES; ++retries) {
+        int ret = connect(sock, (struct sockaddr *)(&remote_addr), sizeof(struct sockaddr));
+        if (ret < 0) {
+            d_warn("cannot connect to remote %d (retry #%d)", remote_id, retries);
+            usleep(CONN_RETRY_INTERVAL);
+        }
+        else
+            break;
+    }
+    if (retries > MAX_CONN_RETRIES) {
+        d_err("failed to connect to remote: %d", remote_id);
+        return -1;
+    }
+
+    return sock;
+}
+
+int sock_sync_data(int sock, int size, void *local_data, void *remote_data)
 {
     int ret;
     int read_bytes = 0;
@@ -14,7 +156,7 @@ int _sock_sync_data(int sock, int size, void *local_data, void *remote_data)
     ret = write(sock, local_data, size);
 
     if (ret < size) {
-        d_err("failed to send data during _sock_sync_data");
+        d_err("failed to send data during sock_sync_data");
         return ret;
     }
     else
@@ -30,7 +172,7 @@ int _sock_sync_data(int sock, int size, void *local_data, void *remote_data)
     }
 
     if (ret < size)
-        d_err("failed to receive data during _sock_sync_data");
+        d_err("failed to receive data during sock_sync_data");
     return ret;
 }
 
@@ -137,6 +279,10 @@ int create_resources(struct rdma_resource *rs, struct all_configs *conf)
             ret = -1;
             break;
         }
+
+        /* Initialize TCP sockets */
+        for (i = 0; i < MAX_PEERS; ++i)
+            rs->peers[i].sock = -1;
     } while (0);
 
     if (ret != 0) {
@@ -193,6 +339,9 @@ int destroy_resources(struct rdma_resource *rs)
 int create_qp(struct rdma_resource *rs, struct peer_conn_info *peer)
 {
     struct ibv_qp_init_attr qp_init_attr;
+
+    /* Currently connection to all peers share the same CQ */
+    peer->cq = rs->cq;
 
     memset(&qp_init_attr, 0, sizeof(struct ibv_qp_init_attr));
     qp_init_attr.qp_type = IBV_QPT_RC;
@@ -335,4 +484,27 @@ int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_c
     } while (0);
 
     return ret;
+}
+
+int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
+{
+    struct ibv_recv_wr rr;
+    struct ibv_sge sge;
+    struct ibv_recv_wr *bad_wr;
+
+    memset(&sge, 0, sizeof(struct ibv_sge));
+    sge.addr = src;
+    sge.length = length;
+    sge.lkey = rs->mr->lkey;
+
+    memset(&rr, 0, sizeof(struct ibv_recv_wr));
+    rr.wr_id = 0;
+    rr.sg_list = &sge;
+    rr.num_sge = 1;
+
+    if (ibv_post_recv(peer->qp, &rr, &bad_wr) < 0) {
+        d_err("failed to post RDMA recv");
+        return -1;
+    }
+    return 0;
 }

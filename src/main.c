@@ -9,6 +9,7 @@
 
 static const struct fuse_opt option_spec[] = {
 	GALOIS_OPTION("--pmem_dev=%s", pmem_dev_name),
+    GALOIS_OPTION("--tcp_port=%d", tcp_port),
     
     GALOIS_OPTION("--ib_dev=%s", ib_dev_name),
     GALOIS_OPTION("--ib_port=%d", ib_port),

@@ -3,14 +3,18 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdatomic.h>
 #include <memory.h>
 #include <malloc.h>
-#include <errno.h>
+#include <errno.h> 
 
 #define MAX_NODES               32
 #define MAX_PEERS               MAX_NODES
-
 #define MAX_HOSTNAME_LEN        128
+#define MAX_CONN_RETRIES        3
+#define CONN_RETRY_INTERVAL     (1000 * 1000)
+#define MAX_QUEUED_CONNS        5
 
 #define MAX_QP_DEPTH            64
 #define MAX_DEST_RD_ATOMIC      16

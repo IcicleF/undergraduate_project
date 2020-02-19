@@ -61,8 +61,10 @@ struct rdma_resource
     struct peer_conn_info peers[MAX_NODES];
 };
 
-int _sock_sync_data(int sock, int size, void *local_data, void *remote_data);
-
+void *_sock_accept(void *_args);
+int sock_listen(struct rdma_resource *rs, struct all_configs *conf);
+int sock_connect(struct rdma_resource *rs, struct peer_conn_info *peer, struct fuse_cmd_config *conf);
+int sock_sync_data(int sock, int size, void *local_data, void *remote_data);
 
 int create_resources(struct rdma_resource *rs, struct all_configs *conf);
 int destroy_resources(struct rdma_resource *rs);
@@ -75,5 +77,7 @@ int modify_qp_to_rtr(struct ibv_qp *qp, int ib_port, struct peer_conn_info *peer
 int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer);
 
 int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer);
+
+int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
 
 #endif // RDMA_H

@@ -24,6 +24,7 @@ struct cluster_config
 int init_cluster_config(struct cluster_config *conf, const char *filename);
 int destroy_cluster_config(struct cluster_config *conf);
 
+struct node_config *find_conf_by_id(struct cluster_config *conf, int id);
 struct node_config *find_conf_by_hostname(struct cluster_config *conf, const char *hostname);
 struct node_config *find_conf_by_ip(struct cluster_config *conf, in_addr_t ip_addr);
 struct node_config *find_conf_by_ip_str(struct cluster_config *conf, const char *ip_addr);
@@ -40,6 +41,7 @@ struct mem_config
 struct fuse_cmd_config
 {
     char *pmem_dev_name;
+    int tcp_port;
 
     char *ib_dev_name;
     int ib_port;
@@ -54,6 +56,11 @@ struct all_configs
     struct node_config *my_node_conf;           /* Should point to one stored in cluster_conf */
     struct mem_config *mem_conf;
     struct fuse_cmd_config *fuse_cmd_conf;
+
+    struct                                      /* Store running-state related information */ 
+    {
+        atomic_bool running;
+    };
 };
 
 #endif // CONFIG_H

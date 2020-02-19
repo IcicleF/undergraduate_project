@@ -81,6 +81,25 @@ int destroy_cluster_config(struct cluster_config *conf)
     return 0;
 }
 
+struct node_config *find_conf_by_id(struct cluster_config *conf, int id)
+{
+    int i = 0;
+
+    if (conf == NULL)
+        return NULL;
+    
+    /* Perform indexing first, then linear search if failed */
+    if (id >= 0 && id < conf->node_count && conf->node_conf[id].id == id)
+        return &conf->node_conf[id];
+    
+    for (i = 0; i < conf->node_count; ++i) {
+        struct node_config *node_conf = &conf->node_conf[i];
+        if (node_conf->id == id)
+            return node_conf;
+    }
+    return NULL;
+}
+
 struct node_config *find_conf_by_hostname(struct cluster_config *conf, const char *hostname)
 {
     int i = 0;

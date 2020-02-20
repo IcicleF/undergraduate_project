@@ -15,98 +15,8 @@ struct listener_args
     int sock;
 };
 
-/* This function MUST be called by pthread_create */
-void *_sock_accept(void *_args)
-{
-    struct listener_args *args = (struct listener_args *)_args;
-    struct sockaddr_in remote_addr;
-    int fd;
-    struct peer_conn_info peer;
-
-    /* Detach from caller process and run independently */
-    pthread_detach(pthread_self());
-
-    while (atomic_load(&args->conf->running)) {
-        fd = accept(args->sock, (struct sockaddr *)(&remote_addr), sizeof(struct sockaddr));
-        if (fd < 0) {
-            d_warn("cannot discover new incoming conecctions");
-            break;
-        }
-
-        memset(&peer, 0, sizeof(struct peer_conn_info));
-        peer.sock = fd;
-        if (create_qp(args->rs, &peer) < 0) {
-            d_err("failed to create QP, break");
-            break;
-        }
-        if (connect_qp(args->rs, args->conf, &peer) < 0) {
-            d_err("failed to connect QP, break");
-            break;
-        }
-
-        d_info("successfully connected with peer: %d", peer.conn_data.node_id);
-
-        memcpy(&args->rs->peers[peer.conn_data.node_id], &peer, sizeof(struct peer_conn_info));
-        // TODO: RDMA Receive
-    }
-     
-    pthread_exit(NULL);
-}
-
-int sock_listen(struct rdma_resource *rs, struct all_configs *conf)
-{
-    struct sockaddr_in local_addr;
-    int ret = 0;
-    int sock;
-    int on = 1;
-    pthread_t listener;
-    struct listener_args args;
-
-    memset(&local_addr, 0, sizeof(struct sockaddr_in));
-    local_addr.sin_family = AF_INET;
-    local_addr.sin_addr.s_addr = INADDR_ANY;
-    local_addr.sin_port = htons(conf->fuse_cmd_conf->tcp_port);
-
-    /* The do-while loop is executed only once and is used to avoid gotos */
-    do {
-        sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-            d_err("failed to create socket");
-            ret = -1;
-            break;
-        }
-        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
-            d_err("failed to set SO_REUSEADDR (errno: %d)", errno);
-            ret = -1;
-            break;
-        }
-        if (bind(sock, (struct sockaddr *)(&local_addr), sizeof(struct sockaddr)) < 0) {
-            d_err("failed to bind socket (errno: %d)", errno);
-            ret = -1;
-            break;
-        }
-
-        listen(sock, MAX_QUEUED_CONNS);
-        
-        args.rs = rs;
-        args.conf = conf;
-        args.sock = sock;
-        if (pthread_create(&listener, NULL, _sock_accept, &args) < 0) {
-            d_err("failed to create listener thread");
-            break;
-        }
-    } while (0);
-
-    if (ret != 0) {
-        if (sock >= 0) {
-            close(sock);
-            sock = -1;
-        }
-    }
-    return ret;
-}
-
-int sock_connect(struct rdma_resource *rs, struct peer_conn_info *peer, struct fuse_cmd_config *conf)
+/* Before calling this function, peer->conn_data.node_id must be properly set */
+int sock_connect(struct rdma_resource *rs, struct fuse_cmd_config *conf, struct peer_conn_info *peer)
 {
     struct sockaddr_in remote_addr;
     struct timeval timeout = {
@@ -444,46 +354,148 @@ int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer)
     return 0;
 }
 
-/* Before calling this function, members {sock, qp} of argument `peer` must be properly set */
+/* Before calling this function, peer->sock must be properly set */
 int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer)
 {
     struct cm_conn_info local_conn_info;
     struct cm_conn_info remote_conn_info;
-    int ret = 0;
 
     local_conn_info.addr = (uint64_t)conf->mem_conf->mem_loc;
     local_conn_info.rkey = rs->mr->rkey;
     local_conn_info.qpn = peer->qp->qp_num;
     local_conn_info.lid = rs->port_attr.lid;
-    local_conn_info.node_id = conf->my_node_conf->id;
+    local_conn_info.node_id = my_node_conf->id;
+
+    if (_sock_sync_data(peer->sock, sizeof(struct cm_conn_info), &local_conn_info, &remote_conn_info) < 0) {
+        d_err("failed to sync with remote");
+        return -1;
+    }
+    memcpy(&peer->conn_data, &remote_conn_info, sizeof(struct cm_conn_info));
+
+    d_info("successfully sync with peer: %d", remote_conn_info.node_id);
+
+    if (create_qp(rs, peer) < 0
+        || modify_qp_to_init(peer->qp, conf->fuse_cmd_conf->ib_port) < 0
+        || modify_qp_to_rtr(peer->qp, conf->fuse_cmd_conf->ib_port, peer) < 0
+        || modify_qp_to_rts(peer->qp, peer) < 0)
+        return -1;
+
+    d_info("successfully modified QP to RTS (with peer: %d)", peer->conn_data.node_id);
+    return 0;
+}
+
+/* This function MUST be called by pthread_create */
+void *_rdma_accept(void *_args)
+{
+    struct listener_args *args = (struct listener_args *)_args;
+    struct sockaddr_in remote_addr;
+    int fd;
+    struct peer_conn_info peer;
+
+    /* Detach from caller process and run independently */
+    pthread_detach(pthread_self());
+
+    while (atomic_load(&running)) {
+        fd = accept(args->sock, (struct sockaddr *)(&remote_addr), sizeof(struct sockaddr));
+        if (fd < 0) {
+            d_warn("cannot discover new incoming conecctions");
+            break;
+        }
+
+        memset(&peer, 0, sizeof(struct peer_conn_info));
+        peer.sock = fd;
+        if (create_qp(args->rs, &peer) < 0) {
+            d_err("failed to create QP, break");
+            break;
+        }
+        if (connect_qp(args->rs, args->conf, &peer) < 0) {
+            d_err("failed to connect QP, break");
+            break;
+        }
+
+        d_info("successfully connected with peer: %d", peer.conn_data.node_id);
+
+        memcpy(&args->rs->peers[peer.conn_data.node_id], &peer, sizeof(struct peer_conn_info));
+        // TODO: RDMA Receive
+    }
+     
+    pthread_exit(NULL);
+}
+
+int rdma_listen(struct rdma_resource *rs, struct all_configs *conf)
+{
+    struct sockaddr_in local_addr;
+    int ret = 0;
+    int sock;
+    int on = 1;
+    pthread_t listener;
+    struct listener_args args;
+
+    memset(&local_addr, 0, sizeof(struct sockaddr_in));
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+    local_addr.sin_port = htons(conf->fuse_cmd_conf->tcp_port);
 
     /* The do-while loop is executed only once and is used to avoid gotos */
     do {
-        ret = _sock_sync_data(peer->sock, sizeof(struct cm_conn_info), &local_conn_info, &remote_conn_info);
-        if (ret < 0) {
-            d_err("failed to sync with remote");
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0) {
+            d_err("failed to create socket");
+            ret = -1;
             break;
         }
-        memcpy(&peer->conn_data, &remote_conn_info, sizeof(struct cm_conn_info));
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
+            d_err("failed to set SO_REUSEADDR (errno: %d)", errno);
+            ret = -1;
+            break;
+        }
+        if (bind(sock, (struct sockaddr *)(&local_addr), sizeof(struct sockaddr)) < 0) {
+            d_err("failed to bind socket (errno: %d)", errno);
+            ret = -1;
+            break;
+        }
 
-        d_info("successfully sync with peer: %d", remote_conn_info.node_id);
+        listen(sock, MAX_QUEUED_CONNS);
         
-        ret = modify_qp_to_init(peer->qp, conf->fuse_cmd_conf->ib_port);
-        if (ret < 0)
+        args.rs = rs;
+        args.conf = conf;
+        args.sock = sock;
+        if (pthread_create(&listener, NULL, _rdma_accept, &args) < 0) {
+            d_err("failed to create listener thread");
+            ret = -1;
             break;
-        
-        ret = modify_qp_to_rtr(peer->qp, conf->fuse_cmd_conf->ib_port, peer);
-        if (ret < 0)
-            break;
-        
-        ret = modify_qp_to_rts(peer->qp, peer);
-        if (ret < 0)
-            break;
-        
-        d_info("successfully modified QP to RTS (with peer: %d)", peer->conn_data.node_id);
+        }
     } while (0);
 
+    if (ret != 0) {
+        if (sock >= 0) {
+            close(sock);
+            sock = -1;
+        }
+    }
     return ret;
+}
+
+int rdma_connect(struct rdma_resource *rs, struct all_configs *conf, int peer_id)
+{
+    if (rs == NULL || conf == NULL)
+        return -1;
+
+    struct peer_conn_info *peer = &conf->cluster_conf->node_conf[peer_id];
+    peer->conn_data.node_id = peer_id;
+
+    peer->sock = sock_connect(rs, peer, conf);
+    if (peer->sock < 0) {
+        d_err("failed to connect socket");
+        return -1;
+    }
+    if (connect_qp(rs, conf, peer) < 0) {
+        d_err("failed to connect QP");
+        return -1;
+    } 
+
+    d_info("successfully built RDMA connection with peer: %d", peer->conn_data.node_id);
+    return 0;
 }
 
 int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
@@ -491,6 +503,9 @@ int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
     struct ibv_recv_wr rr;
     struct ibv_sge sge;
     struct ibv_recv_wr *bad_wr;
+
+    if (rs == NULL || peer == NULL)
+        return -1;
 
     memset(&sge, 0, sizeof(struct ibv_sge));
     sge.addr = src;
@@ -504,6 +519,35 @@ int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
 
     if (ibv_post_recv(peer->qp, &rr, &bad_wr) < 0) {
         d_err("failed to post RDMA recv");
+        return -1;
+    }
+    return 0;
+}
+
+int _rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
+{
+    struct ibv_send_wr sr;
+    struct ibv_sge sge;
+    struct ibv_send_wr *bad_wr = NULL;
+
+    if (rs == NULL || peer == NULL)
+        return -1;
+
+    memset(&sge, 0, sizeof(struct ibv_sge));
+    sge.addr = src;
+    sge.length = length;
+    sge.lkey = rs->mr->lkey;
+
+    memset(&sr, 0, sizeof(struct ibv_send_wr));
+    sr.wr_id = 0;
+    sr.sg_list = &sge;
+    sr.num_sge = 1;
+    sr.imm_data = my_node_conf->id;
+    sr.opcode = IBV_WR_SEND_WITH_IMM;
+    sr.send_flags = IBV_SEND_SIGNALED;
+
+    if (ibv_post_send(peer->qp, &sr, &bad_wr) < 0) {
+        d_err("failed to post RDMA send");
         return -1;
     }
     return 0;

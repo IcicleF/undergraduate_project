@@ -19,11 +19,13 @@ add_executable (galois
     src/ecal/ecal.c
 
     src/network/rdma.c
+    src/network/cluster.c
 )
 
 target_link_libraries (galois
     ${FUSE_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
+    isal
     pmem pmemobj pmemblk
     ibverbs
 )

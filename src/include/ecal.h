@@ -1,15 +1,23 @@
+/*
+ * ecal.h
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * Implements a midware to provide highly-available access to distributed NVM.
+ * The LRC (Local Reconstruction Code) erasure coding is used to provide availability.
+ * Provides block-granularity access to higher levels.
+ * 
+ * Based on ISA-L & libpmemblk.
+ */
+
 #if !defined(ECAL_H)
 #define ECAL_H
 
+#include <isa-l.h>
 #include <libpmemblk.h>
 
-#include "commons.h"
+#include "common.h"
 
-/**
- * ECAL: Erasure Coding Availability Layer
- * 
- * Provides block granularity access to `virtual` distributed NVM.
- */
 struct ecal
 {
     PMEMblkpool *pmem_blkpool;

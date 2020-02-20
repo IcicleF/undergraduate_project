@@ -1,3 +1,12 @@
+/*
+ * config.h
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * One-line debugging macros to let users print messages to stdout.
+ * These macros are equivalent to no-ops if NDEBUG is defined.
+ */
+
 #if !defined(DEBUG_H)
 #define DEBUG_H
 

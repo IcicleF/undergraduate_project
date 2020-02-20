@@ -1,3 +1,12 @@
+/*
+ * common.h
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * Defines necessary includes and constants.
+ * All other headers (should) include this file.
+ */
+
 #if !defined(COMMONS_H)
 #define COMMONS_H
 

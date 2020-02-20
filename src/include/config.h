@@ -1,8 +1,16 @@
+/*
+ * config.h
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * Define all configuration structures and necessary functions to process them.
+ */
+
 #if !defined(CONFIG_H)
 #define CONFIG_H
 
 #include <arpa/inet.h>
-#include "commons.h"
+#include "common.h"
 
 /* Node configuration */
 struct node_config
@@ -19,6 +27,9 @@ struct cluster_config
 {
     struct node_config node_conf[MAX_NODES];
     int node_count;
+
+    int cm_node_id;
+    int mds_node_id;
 };
 
 int init_cluster_config(struct cluster_config *conf, const char *filename);
@@ -40,7 +51,11 @@ struct mem_config
 /* FUSE command line arguments */
 struct fuse_cmd_config
 {
+    char *cluster_conf_file;
+
     char *pmem_dev_name;
+    uint64_t pmem_meta_size;            /* Metadata size in bytes */
+    uint64_t pmem_pool_size;            /* Data pool size in blocks */
     int tcp_port;
 
     char *ib_dev_name;
@@ -53,14 +68,14 @@ struct fuse_cmd_config
 struct all_configs
 {
     struct cluster_config *cluster_conf;
-    struct node_config *my_node_conf;           /* Should point to one stored in cluster_conf */
     struct mem_config *mem_conf;
     struct fuse_cmd_config *fuse_cmd_conf;
-
-    struct                                      /* Store running-state related information */ 
-    {
-        atomic_bool running;
-    };
 };
+
+/* Global configuration indicating THIS node.
+ * Defined to avoid frequently using `all_configs`.
+ */
+extern struct node_config *my_node_conf;
+extern atomic_bool running;
 
 #endif // CONFIG_H

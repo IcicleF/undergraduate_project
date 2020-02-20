@@ -8,9 +8,11 @@
 #include <config.h>
 
 static const struct fuse_opt option_spec[] = {
+    GALOIS_OPTION("--cluster_conf_file=%s", cluster_conf_file),
 	GALOIS_OPTION("--pmem_dev=%s", pmem_dev_name),
+    GALOIS_OPTION("--pmem_meta_size=%lu", pmem_meta_size),
+    GALOIS_OPTION("--pmem_pool_size=%lu", pmem_pool_size),
     GALOIS_OPTION("--tcp_port=%d", tcp_port),
-    
     GALOIS_OPTION("--ib_dev=%s", ib_dev_name),
     GALOIS_OPTION("--ib_port=%d", ib_port),
 	FUSE_OPT_END
@@ -72,8 +74,9 @@ static struct fuse_operations galois_opers = {
 
 void set_default_options(struct fuse_cmd_config *conf)
 {
+    conf->cluster_conf_file = strdup("cluster.conf");
     conf->pmem_dev_name = strdup("/dev/pmem0");
-
+    conf->pmem_meta_size = 
     conf->ib_dev_name = strdup("ib0");
     conf->ib_port = 1;
 }

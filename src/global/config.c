@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <netdb.h>
 
@@ -20,6 +21,10 @@ int init_cluster_config(struct cluster_config *conf, const char *filename)
     if (conf == NULL || filename == NULL)
         return 0;
 
+    memset(conf, 0, sizeof(struct cluster_config));
+    conf->cm_node_id = -1;
+    conf->mds_node_id = -1;
+
     fin = fopen(filename, "r");
     if (fin == NULL) {
         d_err("failed to open cluster config file");
@@ -36,10 +41,18 @@ int init_cluster_config(struct cluster_config *conf, const char *filename)
             break;
         }
 
-        if (strcmp("CM", node_type) == 0)
+        if (strcmp("CM", node_type) == 0) {
             node_conf->type = NODE_TYPE_CM;
-        else if (strcmp("MDS", node_type) == 0)
+            if (conf->cm_node_id >= 0)
+                d_warn("detected multiple CMs");
+            conf->cm_node_id = node_id;
+        }
+        else if (strcmp("MDS", node_type) == 0) {
             node_conf->type = NODE_TYPE_MDS;
+            if (conf->mds_node_id >= 0)
+                d_warn("detected multiple major MDSs");
+            conf->mds_node_id = node_id;
+        }
         else if (strcmp("MDS_BAK", node_type) == 0)
             node_conf->type = NODE_TYPE_MDS_BAK;
         else if (strcmp("DS", node_type) == 0)

@@ -61,7 +61,7 @@ struct rdma_resource
     struct peer_conn_info peers[MAX_NODES];
 };
 
-int sock_connect(struct rdma_resource *rs, struct fuse_cmd_config *conf, struct peer_conn_info *peer);
+int sock_connect(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer);
 int sock_sync_data(int sock, int size, void *local_data, void *remote_data);
 
 int create_resources(struct rdma_resource *rs, struct all_configs *conf);

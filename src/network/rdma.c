@@ -16,7 +16,7 @@ struct listener_args
 };
 
 /* Before calling this function, peer->conn_data.node_id must be properly set */
-int sock_connect(struct rdma_resource *rs, struct fuse_cmd_config *conf, struct peer_conn_info *peer)
+int sock_connect(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer)
 {
     struct sockaddr_in remote_addr;
     struct timeval timeout = {
@@ -25,13 +25,13 @@ int sock_connect(struct rdma_resource *rs, struct fuse_cmd_config *conf, struct 
     };
     int sock;
     int remote_id = peer->conn_data.node_id;
-    struct node_config *remote_conf = find_conf_by_id(rs, remote_id);
+    struct node_config *remote_conf = find_conf_by_id(conf->cluster_conf, remote_id);
     int retries;
 
     memset(&remote_addr, 0, sizeof(struct sockaddr_in));
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_addr.s_addr = remote_conf->ip_addr;
-    remote_addr.sin_port = htons(conf->tcp_port);
+    remote_addr.sin_port = htons(conf->fuse_cmd_conf->tcp_port);
 
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -366,7 +366,7 @@ int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_c
     local_conn_info.lid = rs->port_attr.lid;
     local_conn_info.node_id = my_node_conf->id;
 
-    if (_sock_sync_data(peer->sock, sizeof(struct cm_conn_info), &local_conn_info, &remote_conn_info) < 0) {
+    if (sock_sync_data(peer->sock, sizeof(struct cm_conn_info), &local_conn_info, &remote_conn_info) < 0) {
         d_err("failed to sync with remote");
         return -1;
     }
@@ -391,12 +391,13 @@ void *_rdma_accept(void *_args)
     struct sockaddr_in remote_addr;
     int fd;
     struct peer_conn_info peer;
+    socklen_t socklen = sizeof(struct sockaddr);
 
     /* Detach from caller process and run independently */
     pthread_detach(pthread_self());
 
     while (atomic_load(&running)) {
-        fd = accept(args->sock, (struct sockaddr *)(&remote_addr), sizeof(struct sockaddr));
+        fd = accept(args->sock, (struct sockaddr *)(&remote_addr), &socklen);
         if (fd < 0) {
             d_warn("cannot discover new incoming conecctions");
             break;
@@ -481,10 +482,10 @@ int rdma_connect(struct rdma_resource *rs, struct all_configs *conf, int peer_id
     if (rs == NULL || conf == NULL)
         return -1;
 
-    struct peer_conn_info *peer = &conf->cluster_conf->node_conf[peer_id];
+    struct peer_conn_info *peer = &rs->peers[peer_id];
     peer->conn_data.node_id = peer_id;
 
-    peer->sock = sock_connect(rs, peer, conf);
+    peer->sock = sock_connect(rs, conf, peer);
     if (peer->sock < 0) {
         d_err("failed to connect socket");
         return -1;

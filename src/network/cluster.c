@@ -25,7 +25,7 @@ int init_self(struct rdma_resource *rs, struct all_configs *conf)
         d_warn("init_self allocating cluster_conf, this memory won't be freed");
         conf->cluster_conf = malloc(sizeof(struct cluster_config));
     }
-    if (init_cluster_config(&conf->cluster_conf, conf->fuse_cmd_conf->cluster_conf_file) < 0) {
+    if (init_cluster_config(conf->cluster_conf, conf->fuse_cmd_conf->cluster_conf_file) < 0) {
         d_err("failed to initialize cluster config from %s", conf->fuse_cmd_conf->cluster_conf_file);
         return -1;
     }

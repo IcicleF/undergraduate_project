@@ -6,6 +6,11 @@
 #include <fuse.h>
 
 #include <config.h>
+#include <ecal.h>
+#include <cluster.h>
+
+struct node_config *my_node_conf;
+atomic_bool running;
 
 static const struct fuse_opt option_spec[] = {
     GALOIS_OPTION("--cluster_conf_file=%s", cluster_conf_file),
@@ -76,7 +81,7 @@ void set_default_options(struct fuse_cmd_config *conf)
 {
     conf->cluster_conf_file = strdup("cluster.conf");
     conf->pmem_dev_name = strdup("/dev/pmem0");
-    conf->pmem_meta_size = 
+    conf->pmem_pool_size = 1 << (31 - 12);              // 2GB
     conf->ib_dev_name = strdup("ib0");
     conf->ib_port = 1;
 }

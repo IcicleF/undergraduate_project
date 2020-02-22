@@ -17,11 +17,15 @@
 #include <libpmem.h>
 
 #include "cluster.h"
+#include "alloc_table.h"
 
 struct ecal
 {
-    void *local_pmem;
-    
+    struct mem_config *mem_conf;
+
+    struct alloc_table *metadata;
+    void *data_blks;
+
     struct rdma_resource rs;
 };
 

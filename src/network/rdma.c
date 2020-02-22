@@ -228,17 +228,23 @@ int destroy_resources(struct rdma_resource *rs)
     if (rs == NULL)
         return 0;
     
-    /* Close sockets */
+    /* Close sockets, free RDMA recv buffers */
     for (i = 0; i < MAX_NODES; ++i) {
         struct peer_conn_info *peer = &rs->peers[i];
         if (peer->sock > 0) {
             close(peer->sock);
             peer->sock = -1;
         }
+        if (peer->buf != NULL) {
+            free(peer->buf);
+            peer->buf = NULL;
+        }
     }
 
+    /* Destroy all QPs */
     destroy_qp(rs);
     
+    /* Destroy MR, CQ, PD & Context */
     if (rs->mr) {
         ibv_dereg_mr(rs->mr);
         rs->mr = NULL;
@@ -406,7 +412,9 @@ void *_rdma_accept(void *_args)
     struct sockaddr_in remote_addr;
     int fd;
     struct peer_conn_info peer;
+    struct peer_conn_info *target_peer;
     socklen_t socklen = sizeof(struct sockaddr);
+    int accepted_peers = 0;
 
     /* Detach from caller process and run independently */
     pthread_detach(pthread_self());
@@ -420,6 +428,9 @@ void *_rdma_accept(void *_args)
 
         memset(&peer, 0, sizeof(struct peer_conn_info));
         peer.sock = fd;
+        peer.buf = malloc(RDMA_RECV_BUF_SIZE);
+        memset(peer.buf, 0, RDMA_RECV_BUF_SIZE);
+
         if (create_qp(args->rs, &peer) < 0) {
             d_err("failed to create QP, break");
             break;
@@ -429,12 +440,21 @@ void *_rdma_accept(void *_args)
             break;
         }
 
-        d_info("successfully connected with peer: %d", peer.conn_data.node_id);
+        d_info("successfully accepted connection from peer: %d", peer.conn_data.node_id);
 
-        memcpy(&args->rs->peers[peer.conn_data.node_id], &peer, sizeof(struct peer_conn_info));
-        // TODO: RDMA Receive
+        target_peer = &args->rs->peers[peer.conn_data.node_id];
+        memcpy(target_peer, &peer, sizeof(struct peer_conn_info));
+        _rdma_post_recv(args->rs, target_peer, peer.buf, 0);
+
+        ++accepted_peers;
+
+        /* Check if all peers have connected (assuming node ID starts from 0) */
+        if (my_node_conf->id + accepted_peers + 1 == args->conf->cluster_conf->node_count) {
+            d_info("all peers AFTER SELF have connected, break");
+            break;
+        }
     }
-     
+
     pthread_exit(NULL);
 }
 
@@ -461,12 +481,12 @@ int rdma_listen(struct rdma_resource *rs, struct all_configs *conf)
             break;
         }
         if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
-            d_err("failed to set SO_REUSEADDR (errno: %d)", errno);
+            d_err("failed to set SO_REUSEADDR (%s)", strerror(errno));
             ret = -1;
             break;
         }
         if (bind(sock, (struct sockaddr *)(&local_addr), sizeof(struct sockaddr)) < 0) {
-            d_err("failed to bind socket (errno: %d)", errno);
+            d_err("failed to bind socket (%s)", strerror(errno));
             ret = -1;
             break;
         }

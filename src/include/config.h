@@ -36,6 +36,9 @@ struct cluster_config
 
     int cm_node_id;
     int mds_node_id;
+    int mds_bak_node_id[MAX_MDS_BAKS];
+    int mds_bak_count;
+    int ds_count;
 };
 
 int init_cluster_config(struct cluster_config *conf, const char *filename);

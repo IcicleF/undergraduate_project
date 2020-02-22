@@ -53,10 +53,17 @@ int init_cluster_config(struct cluster_config *conf, const char *filename)
                 d_warn("detected multiple major MDSs");
             conf->mds_node_id = node_id;
         }
-        else if (strcmp("MDS_BAK", node_type) == 0)
+        else if (strcmp("MDS_BAK", node_type) == 0) {
             node_conf->type = NODE_TYPE_MDS_BAK;
-        else if (strcmp("DS", node_type) == 0)
+            if (conf->mds_bak_count < MAX_MDS_BAKS)
+                conf->mds_bak_node_id[conf->mds_bak_count++] = node_id;
+            else
+                d_err("detected too many MDS replications (>%d)", MAX_MDS_BAKS);
+        }
+        else if (strcmp("DS", node_type) == 0) {
             node_conf->type = NODE_TYPE_DS;
+            conf->ds_count++;
+        }
         else if (strcmp("CLI", node_type) == 0)
             node_conf->type = NODE_TYPE_CLI;
         else {

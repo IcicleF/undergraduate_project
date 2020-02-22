@@ -31,7 +31,7 @@
 /* Structure to exchange data which is needed to connect the QPs */
 struct cm_conn_info
 {
-    uint64_t addr;                          /* Buffer address */
+    uint64_t addr;                          /* Remote buffer address */
     uint32_t rkey;                          /* Remote key */
     uint32_t qpn;                           /* QP number */
     uint16_t lid;                           /* LID of the IB port */
@@ -46,6 +46,7 @@ struct peer_conn_info
 
     struct cm_conn_info conn_data;
     int sock;                               /* TCP socket */
+    void *buf;                              /* RDMA Receive Buffer */
 };
 
 /* Store all necessary resources for RDMA connection with other nodes */

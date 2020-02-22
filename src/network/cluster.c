@@ -3,6 +3,8 @@
 
 int init_self(struct rdma_resource *rs, struct all_configs *conf)
 {
+    int i;
+
     if (conf == NULL)
         return -1;
     
@@ -25,59 +27,37 @@ int init_self(struct rdma_resource *rs, struct all_configs *conf)
         return -1;
     }
 
-    if (my_node_conf->type == NODE_TYPE_CM) {
-        d_info("I am Connection Manager");
-        d_info("I will wait for incoming connections");
-    }
-    else if (my_node_conf->type == NODE_TYPE_MDS) {
+    if (my_node_conf->type == NODE_TYPE_CM)
+        d_info("I am CM");
+    else if (my_node_conf->type == NODE_TYPE_MDS)
         d_info("I am MDS");
-        d_info("I will ONLY connect with CM");
-
-        if (rdma_connect(rs, conf, conf->cluster_conf->cm_node_id) < 0) {
-            d_err("failed to connect with CM");
-            return -1;
-        }
-    }
-    else if (my_node_conf->type == NODE_TYPE_MDS_BAK) {
+    else if (my_node_conf->type == NODE_TYPE_MDS_BAK)
         d_info("I am MDS Replication");
-        d_info("I will ONLY connect with MDS & CM");
-        
-        if (rdma_connect(rs, conf, conf->cluster_conf->cm_node_id) < 0) {
-            d_err("failed to connect with CM");
-            return -1;
-        }
-        if (rdma_connect(rs, conf, conf->cluster_conf->mds_node_id) < 0) {
-            d_err("failed to connect with MDS");
-            return -1;
-        }
-    }
-    else if (my_node_conf->type == NODE_TYPE_DS) {
-        int i;
-
+    else if (my_node_conf->type == NODE_TYPE_DS)
         d_info("I am DS");
-        d_info("I will connect to CM, MDS & all other DSs");
-
-        if (rdma_connect(rs, conf, conf->cluster_conf->cm_node_id) < 0) {
-            d_err("failed to connect with CM");
-            return -1;
-        }
-        if (rdma_connect(rs, conf, conf->cluster_conf->mds_node_id) < 0) {
-            d_err("failed to connect with MDS");
-            return -1;
-        }
-        for (i = 0; i < conf->cluster_conf->node_count; ++i) {
-            struct node_config *node_conf = &conf->cluster_conf->node_conf[i];
-            if (node_conf->id == my_node_conf->id)
-                continue;
-            if (node_conf->type == NODE_TYPE_DS)
-                if (rdma_connect(rs, conf, node_conf->id) < 0) {
-                    d_err("failed to connect with DS: %d", node_conf->id);
-                    return -1;
-                } 
-        }
+    else if (my_node_conf->type == NODE_TYPE_CLI)
+        d_info("I am Client");
+    else {
+        d_err("I don't know who I am");
+        return -1;
     }
 
-    /* Wait for incoming connections */
+    /* Connect with all other peers BEFORE SELF */
+    for (i = 0; i < conf->cluster_conf->node_count; ++i) {
+        struct node_config *node_conf = &conf->cluster_conf->node_conf[i];
+        if (node_conf->id >= my_node_conf->id)
+            continue;
+        if (my_node_conf->type == NODE_TYPE_CLI && node_conf->type == NODE_TYPE_CLI)
+            continue;
+        if (rdma_connect(rs, conf, node_conf->id) < 0) {
+            d_err("failed to connect with peer: %d", node_conf->id);
+            return -1;
+        }
+        else
+            d_info("successfully connected with peer: %d", node_conf->id);
+    }
+
+    /* Wait for incoming connections AFTER SELF */
     if (rdma_listen(rs, conf) < 0) {
         d_err("failed to listen on TCP port %d", conf->fuse_cmd_conf->tcp_port);
         return -1;

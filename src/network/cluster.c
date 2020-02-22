@@ -8,23 +8,6 @@ int init_self(struct rdma_resource *rs, struct all_configs *conf)
     
     /* Firstly, initialize members of conf */
 
-    /* fuse_cmd_conf should have been set by FUSE */
-    if (conf->fuse_cmd_conf == NULL) {
-        d_err("fuse_cmd_conf should be set by FUSE");
-        return -1;
-    }
-
-    /* mem_conf can be initialized here? */
-    if (conf->mem_conf == NULL) {
-        d_warn("init_self allocating mem_conf, this memory won't be freed");
-        conf->mem_conf = malloc(sizeof(struct mem_config));
-    }
-    
-    /* cluster_conf can be initialized here */
-    if (conf->cluster_conf == NULL) {
-        d_warn("init_self allocating cluster_conf, this memory won't be freed");
-        conf->cluster_conf = malloc(sizeof(struct cluster_config));
-    }
     if (init_cluster_config(conf->cluster_conf, conf->fuse_cmd_conf->cluster_conf_file) < 0) {
         d_err("failed to initialize cluster config from %s", conf->fuse_cmd_conf->cluster_conf_file);
         return -1;
@@ -100,5 +83,13 @@ int init_self(struct rdma_resource *rs, struct all_configs *conf)
         return -1;
     }
     
+    return 0;
+}
+
+int destroy_self(struct rdma_resource *rs, struct all_configs *conf)
+{
+    destroy_resources(rs);
+    destroy_cluster_config(conf->cluster_conf);
+
     return 0;
 }

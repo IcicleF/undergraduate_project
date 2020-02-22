@@ -3,4 +3,7 @@
 
 #include <ecal.h>
 
-
+int ecal_init(struct ecal *ecal)
+{
+    return -1;
+}

@@ -156,3 +156,71 @@ struct node_config *find_my_conf(struct cluster_config *conf)
     gethostname(hostname, MAX_HOSTNAME_LEN);
     return find_conf_by_hostname(conf, hostname);
 }
+
+
+static const struct fuse_opt option_spec[] = {
+    GALOIS_OPTION("--cluster_conf_file=%s", cluster_conf_file),
+	GALOIS_OPTION("--pmem_dev=%s", pmem_dev_name),
+    GALOIS_OPTION("--pmem_meta_size=%lu", pmem_meta_size),
+    GALOIS_OPTION("--pmem_pool_size=%lu", pmem_pool_size),
+    GALOIS_OPTION("--tcp_port=%d", tcp_port),
+    GALOIS_OPTION("--ib_dev=%s", ib_dev_name),
+    GALOIS_OPTION("--ib_port=%d", ib_port),
+	FUSE_OPT_END
+};
+
+void _set_default_options(struct fuse_cmd_config *conf)
+{
+    conf->cluster_conf_file = strdup("cluster.conf");
+    conf->pmem_dev_name = strdup("/dev/pmem0");
+    conf->pmem_pool_size = 1 << (31 - 12);              // 2GB
+    conf->ib_dev_name = strdup("ib0");
+    conf->ib_port = 1;
+}
+
+int init_all_configs(struct all_configs *conf, struct fuse_args *args)
+{
+    memset(conf, 0, sizeof(struct all_configs));
+
+    /* Parse FUSE arguments */
+    conf->fuse_cmd_conf = malloc(sizeof(struct fuse_cmd_config));
+    memset(conf->fuse_cmd_conf, 0, sizeof(struct fuse_cmd_config));
+
+    _set_default_options(conf->fuse_cmd_conf);
+
+    if (fuse_opt_parse(args, conf->fuse_cmd_conf, option_spec, NULL) == -1)
+		return -1;
+
+    /* Memory configuration */
+    conf->mem_conf = malloc(sizeof(struct mem_config));
+    memset(conf->mem_conf, 0, sizeof(struct mem_config));
+    
+    /* Cluster configuration */
+    conf->cluster_conf = malloc(sizeof(struct cluster_config));
+    memset(conf->cluster_conf, 0, sizeof(struct cluster_config));
+    
+    return 0;
+}
+
+int destroy_all_configs(struct all_configs *conf, struct fuse_args *args)
+{
+    if (conf->cluster_conf != NULL) {
+        d_info("destroy_all_configs deallocating cluster_conf");
+        free(conf->cluster_conf);
+        conf->cluster_conf = NULL;
+    }
+    else
+        d_warn("cluster_conf is already freed");
+    
+    if (conf->mem_conf != NULL) {
+        d_info("destroy_all_configs deallocating mem_conf");
+        free(conf->mem_conf);
+        conf->mem_conf = NULL;
+    }
+    else
+        d_warn("mem_conf is already freed");
+    
+    fuse_opt_free_args(args);
+
+    return 0;
+}

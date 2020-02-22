@@ -14,19 +14,21 @@
 #define ECAL_H
 
 #include <isa-l.h>
-#include <libpmemblk.h>
+#include <libpmem.h>
 
-#include "common.h"
+#include "cluster.h"
 
 struct ecal
 {
-    PMEMblkpool *pmem_blkpool;
+    void *local_pmem;
+    
+    struct rdma_resource rs;
 };
 
-int ecal_init(struct ecal *ecal, void *config);
+int ecal_init(struct ecal *ecal);
 int ecal_destroy(struct ecal *ecal);
 
-int ecal_readblks(struct ecal *ecal, void *dest, int nblks);
-int ecal_writeblks(struct ecal *ecal, void *src, int nblks);
+int ecal_readblks(struct ecal *ecal, void *dest, int offset, int nblks);
+int ecal_writeblks(struct ecal *ecal, void *src, int offset, int nblks);
 
 #endif // ECAL_H

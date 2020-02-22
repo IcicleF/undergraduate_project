@@ -9,7 +9,13 @@
 #if !defined(CONFIG_H)
 #define CONFIG_H
 
+#if !defined(FUSE_USE_VERSION)
+#define FUSE_USE_VERSION 39
+#endif
+
 #include <arpa/inet.h>
+#include <fuse.h>
+
 #include "common.h"
 
 /* Node configuration */
@@ -69,8 +75,14 @@ struct all_configs
 {
     struct cluster_config *cluster_conf;
     struct mem_config *mem_conf;
+
+    /* FUSE command line arguments should be initialized separately in main function */
     struct fuse_cmd_config *fuse_cmd_conf;
 };
+
+void _set_default_options(struct fuse_cmd_config *conf);
+int init_all_configs(struct all_configs *conf, struct fuse_args *args);
+int destroy_all_configs(struct all_configs *conf, struct fuse_args *args);
 
 /* Global configuration indicating THIS node.
  * Defined to avoid frequently using `all_configs`.

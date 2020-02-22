@@ -223,8 +223,21 @@ int create_resources(struct rdma_resource *rs, struct all_configs *conf)
 
 int destroy_resources(struct rdma_resource *rs)
 {
+    int i;
+
     if (rs == NULL)
         return 0;
+    
+    /* Close sockets */
+    for (i = 0; i < MAX_NODES; ++i) {
+        struct peer_conn_info *peer = &rs->peers[i];
+        if (peer->sock > 0) {
+            close(peer->sock);
+            peer->sock = -1;
+        }
+    }
+
+    destroy_qp(rs);
     
     if (rs->mr) {
         ibv_dereg_mr(rs->mr);
@@ -242,6 +255,8 @@ int destroy_resources(struct rdma_resource *rs)
         ibv_close_device(rs->context);
         rs->context = NULL;
     }
+
+    d_info("successfully destroyed RDMA resources");
 
     return 0;
 }

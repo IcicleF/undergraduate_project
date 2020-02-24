@@ -16,6 +16,7 @@ add_executable (galois
     src/main.c
 
     src/global/config.c
+    src/global/alloc_table.c
 
     src/ecal/ecal.c
 

@@ -406,7 +406,7 @@ int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_c
 }
 
 /* This function MUST be called by pthread_create */
-void *_rdma_accept(void *_args)
+void *rdma_accept(void *_args)
 {
     struct listener_args *args = (struct listener_args *)_args;
     struct sockaddr_in remote_addr;
@@ -444,7 +444,7 @@ void *_rdma_accept(void *_args)
 
         target_peer = &args->rs->peers[peer.conn_data.node_id];
         memcpy(target_peer, &peer, sizeof(struct peer_conn_info));
-        _rdma_post_recv(args->rs, target_peer, peer.buf, 0);
+        rdma_post_recv(args->rs, target_peer, peer.buf, 0);
 
         ++accepted_peers;
 
@@ -496,7 +496,7 @@ int rdma_listen(struct rdma_resource *rs, struct all_configs *conf)
         args.rs = rs;
         args.conf = conf;
         args.sock = sock;
-        if (pthread_create(&listener, NULL, _rdma_accept, &args) < 0) {
+        if (pthread_create(&listener, NULL, rdma_accept, &args) < 0) {
             d_err("failed to create listener thread");
             ret = -1;
             break;
@@ -534,7 +534,7 @@ int rdma_connect(struct rdma_resource *rs, struct all_configs *conf, int peer_id
     return 0;
 }
 
-int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
+int rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
 {
     struct ibv_recv_wr rr;
     struct ibv_sge sge;
@@ -560,7 +560,7 @@ int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
     return 0;
 }
 
-int _rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
+int rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length)
 {
     struct ibv_send_wr sr;
     struct ibv_sge sge;
@@ -586,5 +586,72 @@ int _rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
         d_err("failed to post RDMA send");
         return -1;
     }
+    return 0;
+}
+
+int rdma_post_read(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length)
+{
+    struct ibv_send_wr sr;
+    struct ibv_sge sge;
+    struct ibv_send_wr **bad_wr = NULL;
+
+    if (rs == NULL || peer == NULL)
+        return -1;
+    
+    memset(&sge, 0, sizeof(struct ibv_sge));
+    sge.addr = dest;
+    sge.length = length;
+    sge.lkey = rs->mr->lkey;
+
+    memset(&sr, 0, sizeof(struct ibv_send_wr));
+    sr.wr_id = 0;
+    sr.sg_list = &sge;
+    sr.num_sge = 1;
+    sr.opcode = IBV_WC_RDMA_READ;
+    sr.send_flags = IBV_SEND_SIGNALED;
+    sr.wr.rdma.remote_addr = peer->conn_data.addr + src;    /* Offset to remote base addr */
+    sr.wr.rdma.rkey = peer->conn_data.rkey;
+
+    if (ibv_post_send(peer->qp, &sr, &bad_wr) < 0) {
+        d_err("failed to post RDMA read (%s)", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length, int imm)
+{
+    struct ibv_send_wr sr;
+    struct ibv_sge sge;
+    struct ibv_send_wr **bad_wr = NULL;
+
+    if (rs == NULL || peer == NULL)
+        return -1;
+    
+    memset(&sge, 0, sizeof(struct ibv_sge));
+    sge.addr = dest;
+    sge.length = length;
+    sge.lkey = rs->mr->lkey;
+
+    memset(&sr, 0, sizeof(struct ibv_send_wr));
+    sr.wr_id = 0;
+    sr.sg_list = &sge;
+    sr.num_sge = 1;
+    if (imm == -1)
+        sr.opcode = IBV_WR_RDMA_WRITE;
+    else {
+        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        sr.imm_data = imm;
+    }
+    sr.send_flags = IBV_SEND_SIGNALED;
+    sr.wr.rdma.remote_addr = peer->conn_data.addr + src;    /* Offset to remote base addr */
+    sr.wr.rdma.rkey = peer->conn_data.rkey;
+
+    if (ibv_post_send(peer->qp, &sr, &bad_wr) < 0) {
+        d_err("failed to post RDMA write (%s)", strerror(errno));
+        return -1;
+    }
+
     return 0;
 }

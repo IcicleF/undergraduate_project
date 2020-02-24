@@ -11,6 +11,7 @@ int ecal_init(struct ecal *ecal)
     // TODO: mem_conf should be inited
 
     // TODO: calc alloc_table & data_blks
+    
 
     return 0;
 }

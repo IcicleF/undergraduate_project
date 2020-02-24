@@ -77,11 +77,13 @@ int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer);
 
 int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer);
 
-void *_rdma_accept(void *_args);
+void *rdma_accept(void *_args);
 int rdma_listen(struct rdma_resource *rs, struct all_configs *conf);
 int rdma_connect(struct rdma_resource *rs, struct all_configs *conf, int peer_id);
 
-int _rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
-int _rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
+int rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
+int rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
+int rdma_post_read(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length);
+int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length, int imm);
 
 #endif // RDMA_H

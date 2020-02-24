@@ -40,4 +40,6 @@
 #define NODE_TYPE_CLI           0x40            // Client
 #define MAX_NODE_TYPE_LEN       8
 
+#define ALLOC_TABLE_MAGIC       0xAB71E514
+
 #endif // COMMONS_H

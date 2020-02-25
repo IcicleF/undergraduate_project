@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <infiniband/verbs.h>
+#include <libpmem.h>
+#include <libpmemobj.h>
 
 #include "common.h"
 #include "config.h"
@@ -36,7 +38,8 @@ struct alloc_table
     struct block_list *free_head;       /* Free list */
 };
 
-int init_alloc_table(struct alloc_table *table, void *area, int area_size, int elem_size, int *count);
+int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size);
+int read_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size);
 int destroy_alloc_table(struct alloc_table *table);
 
 int test_bit(struct alloc_table *table, int index);

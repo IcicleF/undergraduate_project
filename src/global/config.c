@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/types.h>
+#include <sys/mman.h>
 
 #include <config.h>
 #include <debug.h>
@@ -162,6 +164,12 @@ struct node_config *find_my_conf(struct cluster_config *conf)
     
     gethostname(hostname, MAX_HOSTNAME_LEN);
     return find_conf_by_hostname(conf, hostname);
+}
+
+
+void mem_full_flush(struct mem_config *conf)
+{
+    msync(conf->mem_loc, conf->mem_size, MS_SYNC);
 }
 
 

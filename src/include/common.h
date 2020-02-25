@@ -42,4 +42,13 @@
 
 #define ALLOC_TABLE_MAGIC       0xAB71E514
 
+
+#define mem_force_flush(addr)               \
+    asm volatile (                          \
+        "clflush %0;"                       \
+        "sfence"                            \
+        : "+m"((addr))                      \
+    )
+
+
 #endif // COMMONS_H

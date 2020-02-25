@@ -57,6 +57,8 @@ struct mem_config
     uint64_t mem_size;
 };
 
+void mem_full_flush(struct mem_config *conf);
+
 /* FUSE command line arguments */
 struct fuse_cmd_config
 {

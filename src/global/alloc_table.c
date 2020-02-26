@@ -8,42 +8,53 @@
  * Initialize the allocation table (ALT).
  * 
  * Memory Organization:
+ * 
+ * +---- mem_loc
+ * |
+ * V
  * +-------+----------+--------------------------------+
  * | Magic |  Bitmap  |          Element pool          |
  * +-------+----------+--------------------------------+
  * \                                                  /
- *  \____________________ area ______________________/
+ *  \__________________ mem_size ____________________/
  * 
  * This function automacally calculates the element pool's length (= #bits in Bitmap),
- * This length will be rounded down to times of 8.
+ * This length will be rounded down to times of 64.
  * 
  * Persistent memory configuration structure `conf` should HAVE BEEN initialized.
  */
 int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size)
 {
-    int bitmap_bytes;
+    int tmp, bitmap_bytes;
     void *area = conf->mem_loc;
     int area_size = conf->mem_size;
 
-    if (*(table->pmem.alloc_table_magic) == ALLOC_TABLE_MAGIC) {
-        d_info("magic indicates that the table has been initialized");
-        return read_alloc_table(table, conf, elem_size);
+    if (((uint64_t)area) % 8 != 0) {
+        d_err("memory location should be divisible by 8");
+        return -1;
     }
     if (elem_size % 8 != 0) {
         elem_size = (elem_size & (-8)) + 8;
         d_warn("elem_size should be divisible by 8, rounded up to %d", elem_size);
     }
 
+    /* Go read the initialized allocation table */
+    if (*(table->pmem.alloc_table_magic) == ALLOC_TABLE_MAGIC) {
+        d_info("magic indicates that the table has been initialized");
+        return read_alloc_table(table, conf, elem_size);
+    }
+
     table->pmem.alloc_table_magic = area;
     table->pmem.bitmap = area + 8;                          /* 4-byte padding */
     
-    bitmap_bytes = (area_size - 8) / (elem_size * 8 + 1);   /* packaged 8 * (elem + 1b) pairs */
+    tmp = (area_size - 8) / (elem_size * 64 + 8);           /* packaged 64 * (elem + 1b) pairs */
+    bitmap_bytes = tmp * 8;
 
     table->pmem.mapped_area = table->pmem.bitmap + bitmap_bytes;
     table->elem_size = elem_size;
     table->length = bitmap_bytes * 8;
 
-    memset(table->pmem.bitmap, 0, bitmap_bytes);
+    memset(table->pmem.bitmap, -1, bitmap_bytes);           /* Initialize to all-1 */
 
     table->alloc_head = NULL;
     table->free_head = malloc(sizeof(struct block_list));   /* initialize in-DRAM free list */
@@ -82,43 +93,89 @@ int destroy_alloc_table(struct alloc_table *table)
     return 0;
 }
 
-int test_bit(struct alloc_table *table, int index)
+int test_bit(struct alloc_table *table, long index)
 {
-    register int res asm("eax");
+    register int ret asm("eax");
     asm volatile(
-        "bt %2, %3;"
+        "btq %2, %3;"
         "setb %%al"
-        : "=a"(res)
+        : "=r"(ret)
         : "0"(0), "r"(index), "m"(*(table->pmem.bitmap))
         : "cc"
     );
-    return res;
+    return ret;
 }
 
-int set_bit(struct alloc_table *table, int index)
+int set_bit(struct alloc_table *table, long index)
 {
-    register int res asm("eax");
+    register int ret asm("eax");
     asm volatile(
-        "lock bts %2, %3;"
+        "lock btsq %2, %3;"
         "setb %%al"
-        : "=a"(res)
+        : "=r"(ret)
         : "0"(0), "r"(index), "m"(*(table->pmem.bitmap))
         : "cc"
     );
-    return res;
+    return ret;
 }
 
-int clear_bit(struct alloc_table *table, int index)
+int clear_bit(struct alloc_table *table, long index)
 {
-    register int res asm("eax");
+    register int ret asm("eax");
     asm volatile(
-        "lock btr %2, %3;"
+        "lock btrq %2, %3;"
         "setb %%al"
-        : "=a"(res)
+        : "=r"(ret)
         : "0"(0), "r"(index), "m"(*(table->pmem.bitmap))
         : "cc"
     );
-    return res;
+    return ret;
 }
 
+long find_zero_bit(struct alloc_table *table, long start_from)
+{
+    register long ret asm("rax");
+
+    start_from &= -8;
+    if (start_from < 0 || start_from >= table->length)
+        return -1;
+
+    asm volatile(
+        "bsf %1, %0"
+        : "=r"(ret)
+        : "m"(*(table->pmem.bitmap + start_from / 8))
+    );
+    ret += start_from;
+
+    if (ret >= table->length)
+        return -1;
+    return ret;
+}
+
+void *alloc_elem(struct alloc_table *table)
+{
+    long ret = 0;
+
+    while (1) {
+        ret = find_zero_bit(table, ret);
+        if (unlikely(ret == -1))
+            return NULL;
+        if (likely(clear_bit(table, ret) == 1))     /* If successfully cleared the 1, returns */
+            break;
+    }
+    return (void *)((uint64_t)table->pmem.mapped_area + ret * table->elem_size);
+}
+
+void free_elem(struct alloc_table *table, void *elem)
+{
+    uint64_t offset = (uint64_t)elem - (uint64_t)(table->pmem.mapped_area);
+    long index = offset / table->elem_size;
+
+    if (unlikely(offset % table->elem_size != 0)) {
+        d_err("elem is not well-aligned");
+        return;
+    }
+    if (unlikely(set_bit(table, index) == 1))
+        d_err("bit #%d is already set", index);
+}
 

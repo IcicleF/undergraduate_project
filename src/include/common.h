@@ -42,6 +42,12 @@
 
 #define ALLOC_TABLE_MAGIC       0xAB71E514
 
+#define MAX_FILENAME_LEN        256
+#define INODE_HASH_BITS         16
+#define INODE_HASH_SPACE        (1 << INODE_HASH_BITS)
+#define PICKED_BYTE0            4
+#define PICKED_BYTE1            13
+
 
 #define mem_force_flush(addr)               \
     asm volatile (                          \

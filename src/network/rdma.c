@@ -444,7 +444,7 @@ void *rdma_accept(void *_args)
 
         target_peer = &args->rs->peers[peer.conn_data.node_id];
         memcpy(target_peer, &peer, sizeof(struct peer_conn_info));
-        rdma_post_recv(args->rs, target_peer, peer.buf, 0);
+        rdma_post_recv(args->rs, target_peer, (uint64_t)peer.buf, 0);
 
         ++accepted_peers;
 
@@ -593,7 +593,7 @@ int rdma_post_read(struct rdma_resource *rs, struct peer_conn_info *peer, uint64
 {
     struct ibv_send_wr sr;
     struct ibv_sge sge;
-    struct ibv_send_wr **bad_wr = NULL;
+    struct ibv_send_wr *bad_wr = NULL;
 
     if (rs == NULL || peer == NULL)
         return -1;
@@ -607,7 +607,7 @@ int rdma_post_read(struct rdma_resource *rs, struct peer_conn_info *peer, uint64
     sr.wr_id = 0;
     sr.sg_list = &sge;
     sr.num_sge = 1;
-    sr.opcode = IBV_WC_RDMA_READ;
+    sr.opcode = IBV_WR_RDMA_READ;
     sr.send_flags = IBV_SEND_SIGNALED;
     sr.wr.rdma.remote_addr = peer->conn_data.addr + src;    /* Offset to remote base addr */
     sr.wr.rdma.rkey = peer->conn_data.rkey;
@@ -624,7 +624,7 @@ int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
 {
     struct ibv_send_wr sr;
     struct ibv_sge sge;
-    struct ibv_send_wr **bad_wr = NULL;
+    struct ibv_send_wr *bad_wr = NULL;
 
     if (rs == NULL || peer == NULL)
         return -1;

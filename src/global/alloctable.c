@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <alloc_table.h>
+#include <alloctable.h>
 #include <debug.h>
 
 /**
@@ -53,7 +53,7 @@ int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int ele
     table->pmem.mapped_area = table->pmem.bitmap + bitmap_bytes;
     table->elem_size = elem_size;
     table->length = bitmap_bytes * 8;
-
+    table->alloced = 0;
     memset(table->pmem.bitmap, -1, bitmap_bytes);           /* Initialize to all-1 */
 
     table->alloc_head = NULL;
@@ -71,8 +71,7 @@ int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int ele
 /* Free in-DRAM block lists */
 int destroy_alloc_table(struct alloc_table *table)
 {
-    struct block_list *head;
-    struct block_list *ptr;
+    struct block_list *head, *ptr;
 
     head = table->alloc_head;
     table->alloc_head = NULL;
@@ -152,7 +151,7 @@ long find_zero_bit(struct alloc_table *table, long start_from)
     return ret;
 }
 
-void *alloc_elem(struct alloc_table *table)
+void *alloc_elem(struct alloc_table *table, long *index)
 {
     long ret = 0;
 
@@ -163,7 +162,10 @@ void *alloc_elem(struct alloc_table *table)
         if (likely(clear_bit(table, ret) == 1))     /* If successfully cleared the 1, returns */
             break;
     }
-    return (void *)((uint64_t)table->pmem.mapped_area + ret * table->elem_size);
+
+    table->alloced++;
+    *index = ret;
+    return ELEM_AT(table, ret);
 }
 
 void free_elem(struct alloc_table *table, void *elem)
@@ -175,7 +177,10 @@ void free_elem(struct alloc_table *table, void *elem)
         d_err("elem is not well-aligned");
         return;
     }
-    if (unlikely(set_bit(table, index) == 1))
-        d_err("bit #%d is already set", index);
+    if (unlikely(set_bit(table, index) == 1)) {
+        d_err("bit #%ld is already set", index);
+        return;
+    }
+    
+    table->alloced--;
 }
-

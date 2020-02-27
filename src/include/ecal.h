@@ -17,7 +17,7 @@
 #include <libpmem.h>
 
 #include "cluster.h"
-#include "alloc_table.h"
+#include "alloctable.h"
 
 struct ecal
 {

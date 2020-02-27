@@ -14,11 +14,11 @@ include_directories (${FUSE_INCLUDE_DIR} ${PMEM_INCLUDE_DIR} src/include)
 
 add_executable (galois
     src/main.c
+    src/ecal.c
+    src/inode.c
 
     src/global/config.c
-    src/global/alloc_table.c
-
-    src/ecal/ecal.c
+    src/global/alloctable.c
 
     src/network/rdma.c
     src/network/cluster.c
@@ -27,6 +27,7 @@ add_executable (galois
 target_link_libraries (galois
     ${FUSE_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
+    ssl crypto
     isal
     pmem pmemobj pmemblk
     ibverbs

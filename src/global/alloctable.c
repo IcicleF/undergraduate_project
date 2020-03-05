@@ -28,6 +28,7 @@ int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int ele
     int tmp, bitmap_bytes;
     void *area = conf->mem_loc;
     int area_size = conf->mem_size;
+    int should_init = 0;
 
     if (((uint64_t)area) % 8 != 0) {
         d_err("memory location should be divisible by 8");
@@ -41,7 +42,7 @@ int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int ele
     /* Go read the initialized allocation table */
     if (*(table->pmem.alloc_table_magic) == ALLOC_TABLE_MAGIC) {
         d_info("magic indicates that the table has been initialized");
-        return read_alloc_table(table, conf, elem_size);
+        should_init = 0;
     }
 
     table->pmem.alloc_table_magic = area;
@@ -54,16 +55,21 @@ int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int ele
     table->elem_size = elem_size;
     table->length = bitmap_bytes * 8;
     table->alloced = 0;
-    memset(table->pmem.bitmap, -1, bitmap_bytes);           /* Initialize to all-1 */
+    if (should_init) {
+        memset(table->pmem.bitmap, -1, bitmap_bytes);           /* Initialize to all-1 */
 
-    table->alloc_head = NULL;
-    table->free_head = malloc(sizeof(struct block_list));   /* initialize in-DRAM free list */
-    memset(table->free_head, 0, sizeof(struct block_list));
-    table->free_head->start_id = 0;
-    table->free_head->length = table->length;
+        table->alloc_head = NULL;
+        table->free_head = malloc(sizeof(struct block_list));   /* initialize in-DRAM free list */
+        memset(table->free_head, 0, sizeof(struct block_list));
+        table->free_head->start_id = 0;
+        table->free_head->length = table->length;
 
-    *(table->pmem.alloc_table_magic) = ALLOC_TABLE_MAGIC;
-    mem_force_flush(table->pmem.alloc_table_magic);         /* persist */
+        *(table->pmem.alloc_table_magic) = ALLOC_TABLE_MAGIC;
+        mem_force_flush(table->pmem.alloc_table_magic);         /* persist */
+    }
+    else {
+        d_warn("alloc_head, free_head is not initialized yet!!!");
+    }
 
     return 0;
 }

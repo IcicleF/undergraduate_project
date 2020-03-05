@@ -10,6 +10,7 @@
 #if !defined(COMMONS_H)
 #define COMMONS_H
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -41,6 +42,10 @@
 #define MAX_NODE_TYPE_LEN       8
 
 #define ALLOC_TABLE_MAGIC       0xAB71E514
+
+#define MESSAGE_LEN             64
+#define MESSAGE_REQUEST_MAGIC   0xCCE1F250
+#define MESSAGE_RESPONSE_MAGIC  (~MESSAGE_REQUEST_MAGIC)
 
 #define MAX_FILENAME_LEN        256
 #define INODE_HASH_BITS         16

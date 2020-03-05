@@ -46,7 +46,6 @@ struct alloc_table
     })
 
 int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size);
-int read_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size);
 int destroy_alloc_table(struct alloc_table *table);
 
 int test_bit(struct alloc_table *table, long index);

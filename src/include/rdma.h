@@ -76,6 +76,7 @@ int modify_qp_to_rtr(struct ibv_qp *qp, int ib_port, struct peer_conn_info *peer
 int modify_qp_to_rts(struct ibv_qp *qp, struct peer_conn_info *peer);
 
 int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer);
+void verbose_qp(struct peer_conn_info *peer);
 
 void *rdma_accept(void *_args);
 int rdma_listen(struct rdma_resource *rs, struct all_configs *conf);
@@ -85,5 +86,12 @@ int rdma_post_recv(struct rdma_resource *rs, struct peer_conn_info *peer, uint64
 int rdma_post_send(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t src, uint64_t length);
 int rdma_post_read(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length);
 int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint64_t dest, uint64_t src, uint64_t length, int imm);
+
+int poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc);
+int try_poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc);
+
+int rpc_call();
+int rpc_listen();
+int rpc_process();
 
 #endif // RDMA_H

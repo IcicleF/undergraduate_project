@@ -7,7 +7,7 @@
  * The LRC (Local Reconstruction Code) erasure coding is used to provide availability.
  * Provides block-granularity access to higher levels.
  * 
- * Based on ISA-L & libpmemblk.
+ * Based on ISA-L.
  */
 
 #if !defined(ECAL_H)

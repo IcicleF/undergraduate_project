@@ -10,11 +10,13 @@
 #if !defined(DEBUG_H)
 #define DEBUG_H
 
+#define d_force(f, args...) printf("\033[1m  %s:%d " f "\033[0m\n", __FILE__, __LINE__, ##args)
+
 #if !defined(NDEBUG)
 
 #include <stdio.h>
 
-#define d_info(f, args...) printf("%s:%d " f, __FILE__, __LINE__, ##args)
+#define d_info(f, args...) printf("  %s:%d " f "\n", __FILE__, __LINE__, ##args)
 #define d_warn(f, args...) printf("\033[33m  %s:%d " f "\033[0m\n", __FILE__, __LINE__, ##args)
 #define d_err(f, args...) printf("\033[1;31m  %s:%d " f "\033[0m\n", __FILE__, __LINE__, ##args)
 

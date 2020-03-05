@@ -7,6 +7,7 @@
 #include <inode.h>
 #include <debug.h>
 
+struct alloc_table *inode_alt;
 struct galois_inode *inode_root;
 struct galois_inode **inode_hashtable;
 
@@ -20,6 +21,8 @@ int init_root(struct alloc_table *table)
         d_err("bad allocation table elem size (%d)", table->elem_size);
         return -1;
     }
+
+    inode_alt = table;
 
     buf = alloc_elem(table, &index);
     if (index != 0) {
@@ -100,7 +103,7 @@ struct galois_inode *find_dir(struct galois_inode *from, const char *path)
         
         while (*end != '/' && *end != '\0')
             end++;
-        if (*end == '\0' || *(end + 1) == '\0')     /* Handle /path/to/dir/ situations */
+        if (end[0] == '\0' || end[1] == '\0')       /* Handle /path/to/dir/ cases */
             break;
         
         len = end - path - 1;
@@ -120,17 +123,20 @@ struct galois_inode *find_dir(struct galois_inode *from, const char *path)
     return from;
 }
 
-const char *extract_filename(const char *path)
+const char *extract_filename(const char *path, int *len)
 {
     const char *res = path;
     while (*res != '\0') {
         const char *end = res;
         while (*end != '/' && *end != '\0')
             end++;
-        if (end == '\0')
+        if (end[0] == '\0' || end[1] == '\0') {     /* Handle /path/to/dir/ cases */
+            *len = end - res - 1;
             return res;
+        }
         res = end + 1;
     }
+    *len = 0;
     return NULL;
 }
 
@@ -175,16 +181,17 @@ void add_to_hashtable(struct galois_inode *inode, const char *path, int len)
     }
 
     int hash = hash_path(path, len);
+    inode->path_hash = hash;
     inode->hash_next = inode_hashtable[hash];
     inode_hashtable[hash] = inode;
 }
 
-void remove_from_hashtable(struct galois_inode *inode, const char *path, int len)
+void remove_from_hashtable(struct galois_inode *inode)
 {
     if (inode->hash_next == NULL)
         return;
     
-    int hash = hash_path(path, len);
+    int hash = inode->path_hash;
     if (inode_hashtable[hash] == inode)
         inode_hashtable[hash] = inode->hash_next;
     else {
@@ -200,3 +207,51 @@ void remove_from_hashtable(struct galois_inode *inode, const char *path, int len
     inode->hash_next = NULL;
 }
 
+struct galois_inode *find_inode_by_hash(const char *path, int len)
+{
+    int hash = hash_path(path, len);
+    struct galois_inode *ret = inode_hashtable[hash];
+    int fn_len;
+    const char *filename = extract_filename(path, &fn_len);
+
+    while (ret != NULL) {
+        // FIXME: now, if filename, hash are same, assume that's the result
+        if (fn_len == ret->name_len && strncmp(filename, ret->name, fn_len) == 0)
+            break;
+        ret = ret->hash_next;
+    }
+
+    return ret;
+}
+
+
+int __mkdir(const char *pathname, mode_t mode)
+{
+    struct galois_inode *parent, *cur;
+    long id;
+    const char *filename;
+
+    if (find_inode_by_hash(pathname, 0) != NULL) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    parent = find_dir(NULL, pathname);
+    cur = alloc_elem(inode_alt, &id);
+
+    // TODO: initializers in one func
+    memset(cur, 0, sizeof(struct galois_inode));
+    cur->ino = id + 1;
+    cur->mode = mode;
+    cur->type = INO_DIR;
+    clock_gettime(CLOCK_REALTIME, &cur->mtime);
+    cur->atime.tv_sec = cur->mtime.tv_sec;
+    cur->atime.tv_nsec = cur->mtime.tv_nsec;
+
+    filename = extract_filename(pathname, &cur->name_len);
+    strncpy(cur->name, filename, cur->name_len);
+
+    add_to_hashtable(cur, pathname, 0);
+
+    return 0;
+}

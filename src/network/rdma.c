@@ -405,6 +405,30 @@ int connect_qp(struct rdma_resource *rs, struct all_configs *conf, struct peer_c
     return 0;
 }
 
+void verbose_qp(struct peer_conn_info *peer)
+{
+    struct ibv_qp_attr attr;
+    struct ibv_qp_init_attr init_attr;
+    
+    ibv_query_qp(peer->qp, &attr, IBV_QP_STATE, &init_attr);
+
+#define CHECK(STATE)                                    \
+        if (attr.qp_state == IBV_QPS_##STATE) {         \
+            d_force("client %d QP: %s", peer->conn_data.node_id, #STATE);        \
+            return;                                     \
+        }
+    CHECK(RESET);
+    CHECK(INIT);
+	CHECK(RTR);
+	CHECK(RTS);
+	CHECK(SQD);
+	CHECK(SQE);
+	CHECK(ERR);
+	CHECK(UNKNOWN);
+#undef CHECK
+}
+
+
 /* This function MUST be called by pthread_create */
 void *rdma_accept(void *_args)
 {
@@ -654,4 +678,46 @@ int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
     }
 
     return 0;
+}
+
+
+int try_poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc)
+{
+    int count = ibv_poll_cq(rs->cq, 1, wc);
+    
+    if (count < 0) {
+        d_err("failed to poll from CQ (%s)", strerror(errno));
+        return -1;
+    }
+    if (count == 0)
+        return 0;
+    
+    if (wc->status != IBV_WC_SUCCESS) {
+        d_err("failed wc (%d, %s), wr_id = %d",
+                (int)wc->status, ibv_wc_status_str(wc->status), wc->wr_id);
+        return -1;
+    }
+    return count;
+}
+
+int poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc)
+{
+    int count = 0;
+
+    while (1) {
+        count = ibv_poll_cq(rs->cq, 1, wc);
+        if (count < 0) {
+            d_err("failed to poll from CQ (%s)", strerror(errno));
+            return -1;
+        }
+        if (count > 0)
+            break;
+    }    
+    
+    if (wc->status != IBV_WC_SUCCESS) {
+        d_err("failed wc (%d, %s), wr_id = %d",
+                (int)wc->status, ibv_wc_status_str(wc->status), wc->wr_id);
+        return -1;
+    }
+    return count;
 }

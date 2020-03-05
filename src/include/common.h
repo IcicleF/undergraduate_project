@@ -44,8 +44,6 @@
 #define ALLOC_TABLE_MAGIC       0xAB71E514
 
 #define MESSAGE_LEN             64
-#define MESSAGE_REQUEST_MAGIC   0xCCE1F250
-#define MESSAGE_RESPONSE_MAGIC  (~MESSAGE_REQUEST_MAGIC)
 
 #define MAX_FILENAME_LEN        256
 #define INODE_HASH_BITS         16
@@ -63,5 +61,7 @@
 
 #define likely(x)               __builtin_expect(!!(x), 1)
 #define unlikely(x)             __builtin_expect(!!(x), 0)
+
+#define __PACKED__ __attribute__((packed))
 
 #endif // COMMONS_H

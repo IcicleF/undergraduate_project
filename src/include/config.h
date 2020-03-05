@@ -54,7 +54,12 @@ struct node_config *find_my_conf(struct cluster_config *conf);
 struct mem_config
 {
     void *mem_loc;
+    void *rpc_buf_loc;
+    void *alloc_table_loc;
+    
     uint64_t mem_size;
+    uint64_t rpc_buf_size;
+    uint64_t alloc_table_size;
 };
 
 void mem_full_flush(struct mem_config *conf);
@@ -65,8 +70,7 @@ struct fuse_cmd_config
     char *cluster_conf_file;
 
     char *pmem_dev_name;
-    uint64_t pmem_meta_size;            /* Metadata size in bytes */
-    uint64_t pmem_pool_size;            /* Data pool size in blocks */
+    uint64_t pmem_size;            /* Data pool size in blocks */
     int tcp_port;
 
     char *ib_dev_name;
@@ -74,6 +78,8 @@ struct fuse_cmd_config
 };
 
 #define GALOIS_OPTION(t, p) { t, offsetof(struct fuse_cmd_config, p), 1 }
+
+int init_mem_config(struct mem_config *mem_conf, struct fuse_cmd_config *fuse_cmd_conf);
 
 /* All-in-one! */
 struct all_configs
@@ -86,10 +92,11 @@ struct all_configs
 };
 
 void _set_default_options(struct fuse_cmd_config *conf);
-int init_all_configs(struct all_configs *conf, struct fuse_args *args);
-int destroy_all_configs(struct all_configs *conf, struct fuse_args *args);
+int alloc_all_configs(struct all_configs *conf, struct fuse_args *args);
+int dealloc_all_configs(struct all_configs *conf, struct fuse_args *args);
 
-/* Global configuration indicating THIS node.
+/*
+ * Global configuration indicating THIS node.
  * Defined to avoid frequently using `all_configs`.
  */
 extern struct node_config *my_node_conf;

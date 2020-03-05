@@ -3,20 +3,21 @@
 
 #include "common.h"
 
-#define __PACKED__ __attribute__((packed))
-
-#define RPC_ALLOC       0x00000001
-#define RPC_DEALLOC     0x00000002
+#define MSG_FAILED              0xFECBADEF
+#define MSG_ALLOC               0x00000001
+#define MSG_ALLOC_RESPONSE      (~RPC_ALLOC)
+#define MSG_DEALLOC             0x00000002
+#define MSG_DEALLOS_RESPONSE    (~RPC_DEALLOC)
+#define MSG_HEARTBEAT           0x10000001
+#define MSG_DISCONNECT          0x10000002
+#define MSG_NOT_IMPL            0x88888888
 
 struct message
 {
-    uint32_t magic;
-
+    uint64_t uid;
     uint32_t type;
-    uint32_t src;
-    uint32_t dst;
 
-    union
+    union 
     {
         uint8_t raw_data[52];
     

@@ -74,9 +74,9 @@ int main(int argc, char **argv)
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct all_configs all_conf;
 
-    init_all_configs(&all_conf, &args);
+    alloc_all_configs(&all_conf, &args);
     ret = fuse_main(args.argc, args.argv, &galois_opers, NULL);
-    destroy_all_configs(&all_conf, &args);
+    dealloc_all_configs(&all_conf, &args);
 
     return ret;
 }

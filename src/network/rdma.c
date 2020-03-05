@@ -8,13 +8,6 @@
 #include <debug.h>
 #include <rdma.h>
 
-struct listener_args
-{
-    struct rdma_resource *rs;
-    struct all_configs *conf;
-    int sock;
-};
-
 /* Before calling this function, peer->conn_data.node_id must be properly set */
 int sock_connect(struct rdma_resource *rs, struct all_configs *conf, struct peer_conn_info *peer)
 {
@@ -429,6 +422,13 @@ void verbose_qp(struct peer_conn_info *peer)
 }
 
 
+struct listener_args
+{
+    struct rdma_resource *rs;
+    struct all_configs *conf;
+    int sock;
+};
+
 /* This function MUST be called by pthread_create */
 void *rdma_accept(void *_args)
 {
@@ -720,4 +720,29 @@ int poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc)
         return -1;
     }
     return count;
+}
+
+
+int rpc_call(struct rdma_resource *rs, struct mem_config *mem_conf,
+             int dest_node, uint32_t call_type, struct message *request, struct message **response)
+{
+    static atomic_ulong task_id = 1;
+    struct peer_conn_info *peer = &rs->peers[dest_node];
+
+    if (peer->conn_data.node_id != dest_node) {
+        d_err("peer[%d] has node id %d", dest_node, peer->conn_data.node_id);
+        return -1;
+    }
+
+    request->uid = atomic_fetch_add(&task_id, 1);
+    request->type = request->type;              /* type field should be set by caller */
+
+    mem_force_flush(request);
+
+    if (rdma_post_send(rs, NULL, (uint64_t)request, MESSAGE_LEN) < 0) {
+        d_err("cannot send RPC call via RDMA (to peer: %d)", dest_node);
+        return -1;
+    }
+
+    return 0;
 }

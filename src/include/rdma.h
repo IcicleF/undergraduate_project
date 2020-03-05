@@ -17,6 +17,7 @@
 #include <netdb.h>
 
 #include "config.h"
+#include "message.h"
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define htonll(x) bswap_64((uint64_t)(x))
@@ -36,7 +37,7 @@ struct cm_conn_info
     uint32_t qpn;                           /* QP number */
     uint16_t lid;                           /* LID of the IB port */
     uint32_t node_id;                       /* Remote Node ID */
-} __attribute__((packed));
+} __PACKED__;
 
 /* Store the RDMA connection data with a peer */
 struct peer_conn_info
@@ -90,8 +91,8 @@ int rdma_post_write(struct rdma_resource *rs, struct peer_conn_info *peer, uint6
 int poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc);
 int try_poll_cq_once(struct rdma_resource *rs, struct ibv_wc *wc);
 
-int rpc_call();
-int rpc_listen();
+int rpc_call(struct rdma_resource *rs, struct mem_config *mem_conf, int dest_node, uint32_t call_type, struct message *request, struct message **response);
+void *rpc_listen(void *args);
 int rpc_process();
 
 #endif // RDMA_H

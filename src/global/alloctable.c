@@ -26,8 +26,8 @@
 int init_alloc_table(struct alloc_table *table, struct mem_config *conf, int elem_size)
 {
     int tmp, bitmap_bytes;
-    void *area = conf->mem_loc;
-    int area_size = conf->mem_size;
+    void *area = conf->alloc_table_loc;
+    int area_size = conf->alloc_table_size;
     int should_init = 0;
 
     if (((uint64_t)area) % 8 != 0) {

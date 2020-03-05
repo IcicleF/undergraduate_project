@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 
 #include <config.h>
+#include <message.h>
 #include <debug.h>
 
 int init_cluster_config(struct cluster_config *conf, const char *filename)
@@ -167,6 +168,44 @@ struct node_config *find_my_conf(struct cluster_config *conf)
 }
 
 
+/*
+ * Initializes `mem_conf` from `fuse_cmd_conf`.
+ * Creates memory mapping for the pmem device specified.
+ */
+int init_mem_config(struct mem_config *mem_conf, struct fuse_cmd_config *fuse_cmd_conf)
+{
+    const char *pmemdev = fuse_cmd_conf->ib_dev_name;
+    uint64_t size = fuse_cmd_conf->pmem_size;
+    int fd;
+
+    if (mem_conf->mem_loc != NULL)
+        d_warn("mem_loc != NULL, might be initialized, reset");
+
+    fd = open(pmemdev, O_RDWR);
+    if (fd < 0) {
+        d_err("cannot open pmem device: %s", pmemdev);
+        return -1;
+    }
+
+    mem_conf->mem_loc = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (mem_conf->mem_loc == NULL) {
+        d_err("cannot perform mmap (size: %lu)", size);
+        close(fd);
+        return -1;
+    }
+
+    mem_conf->mem_size = size;
+
+    /* Initialize other members of `mem_conf` */
+    mem_conf->rpc_buf_loc = mem_conf->mem_loc;
+    mem_conf->rpc_buf_size = sizeof(struct message) * MAX_NODES;
+
+    mem_conf->alloc_table_loc = mem_conf->rpc_buf_loc + mem_conf->rpc_buf_size;
+    mem_conf->alloc_table_size = mem_conf->mem_size - mem_conf->rpc_buf_size;
+
+    return 0;
+}
+
 void mem_full_flush(struct mem_config *conf)
 {
     msync(conf->mem_loc, conf->mem_size, MS_SYNC);
@@ -176,8 +215,7 @@ void mem_full_flush(struct mem_config *conf)
 static const struct fuse_opt option_spec[] = {
     GALOIS_OPTION("--cluster_conf_file=%s", cluster_conf_file),
 	GALOIS_OPTION("--pmem_dev=%s", pmem_dev_name),
-    GALOIS_OPTION("--pmem_meta_size=%lu", pmem_meta_size),
-    GALOIS_OPTION("--pmem_pool_size=%lu", pmem_pool_size),
+    GALOIS_OPTION("--pmem_size=%lu", pmem_size),
     GALOIS_OPTION("--tcp_port=%d", tcp_port),
     GALOIS_OPTION("--ib_dev=%s", ib_dev_name),
     GALOIS_OPTION("--ib_port=%d", ib_port),
@@ -188,12 +226,12 @@ void _set_default_options(struct fuse_cmd_config *conf)
 {
     conf->cluster_conf_file = strdup("cluster.conf");
     conf->pmem_dev_name = strdup("/dev/pmem0");
-    conf->pmem_pool_size = 1 << (31 - 12);              // 2GB
+    conf->pmem_size = 1 << (31 - 12);              // 2GB
     conf->ib_dev_name = strdup("ib0");
     conf->ib_port = 1;
 }
 
-int init_all_configs(struct all_configs *conf, struct fuse_args *args)
+int alloc_all_configs(struct all_configs *conf, struct fuse_args *args)
 {
     memset(conf, 0, sizeof(struct all_configs));
 
@@ -217,10 +255,10 @@ int init_all_configs(struct all_configs *conf, struct fuse_args *args)
     return 0;
 }
 
-int destroy_all_configs(struct all_configs *conf, struct fuse_args *args)
+int dealloc_all_configs(struct all_configs *conf, struct fuse_args *args)
 {
     if (conf->cluster_conf != NULL) {
-        d_info("destroy_all_configs deallocating cluster_conf");
+        d_info("dealloc_all_configs deallocating cluster_conf");
         free(conf->cluster_conf);
         conf->cluster_conf = NULL;
     }
@@ -228,7 +266,7 @@ int destroy_all_configs(struct all_configs *conf, struct fuse_args *args)
         d_warn("cluster_conf is already freed");
     
     if (conf->mem_conf != NULL) {
-        d_info("destroy_all_configs deallocating mem_conf");
+        d_info("dealloc_all_configs deallocating mem_conf");
         free(conf->mem_conf);
         conf->mem_conf = NULL;
     }

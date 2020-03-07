@@ -7,14 +7,14 @@
  * These macros are equivalent to no-ops if NDEBUG is defined.
  */
 
-#if !defined(DEBUG_H)
-#define DEBUG_H
+#if !defined(DEBUG_HPP)
+#define DEBUG_HPP
+
+#include <cstdio>
 
 #define d_force(f, args...) printf("\033[1m  %s:%d " f "\033[0m\n", __FILE__, __LINE__, ##args)
 
 #if !defined(NDEBUG)
-
-#include <stdio.h>
 
 #define d_info(f, args...) printf("  %s:%d " f "\n", __FILE__, __LINE__, ##args)
 #define d_warn(f, args...) printf("\033[33m  %s:%d " f "\033[0m\n", __FILE__, __LINE__, ##args)
@@ -28,4 +28,4 @@
 
 #endif // NDEBUG
 
-#endif // DEBUG_H
+#endif // DEBUG_HPP

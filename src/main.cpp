@@ -2,17 +2,13 @@
 #define FUSE_USE_VERSION 39
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fuse.h>
 
-#include <config.h>
-#include <ecal.h>
-#include <cluster.h>
-
-struct node_config *my_node_conf;
-atomic_bool running;
+#include <config.hpp>
+#include <ecal.hpp>
 
 static struct fuse_operations galois_opers = {
     /*
@@ -70,13 +66,10 @@ static struct fuse_operations galois_opers = {
 
 int main(int argc, char **argv)
 {
-    int ret;
-    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-    struct all_configs all_conf;
+    isRunning.store(true);
 
-    alloc_all_configs(&all_conf, &args);
-    ret = fuse_main(args.argc, args.argv, &galois_opers, NULL);
-    dealloc_all_configs(&all_conf, &args);
+    fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    int ret = fuse_main(args.argc, args.argv, &galois_opers, NULL);
 
     return ret;
 }

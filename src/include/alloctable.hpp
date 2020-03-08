@@ -5,6 +5,18 @@
 #include "config.hpp"
 #include "debug.hpp"
 
+/* Wraps a byte array into a block. */
+template <int BlkSize>
+struct DataBlock
+{
+    static const int capacity = BlkSize;
+    uint8_t data[BlkSize];
+};
+
+using Block512B = DataBlock<512>;
+using Block1K = DataBlock<1024>;
+using Block4K = DataBlock<4096>;
+
 /*
  * Memory Organization:
  * 
@@ -30,6 +42,11 @@ public:
 
     explicit AllocationTable()
     {
+        if (memConf == nullptr) {
+            d_err("memConf should have been initialized!");
+            exit(-1);
+        }
+
         auto *area = reinterpret_cast<uint8_t *>(memConf->getDataArea());
         uint64_t areaSize = memConf->getDataAreaCapacity();
         bool shouldInit = true;
@@ -70,6 +87,18 @@ public:
     {
         return reinterpret_cast<Ty *>(mappedArea) + index;
     }
+
+    /* Returns the item shift related to the beginning of the bitmap */
+    __always_inline uint64_t getShift(uint64_t index) const
+    {
+        return (uint64_t)at(index) - (uint64_t)allocTableMagic;
+    }
+
+    /* Returns the number of allocated elements */
+    __always_inline uint64_t getCount() const { return allocated; }
+
+    /* Returns the capacity of the allocation table */
+    __always_inline uint64_t getCapacity() const { return length; }
 
     /*
      * Test a bit in the allocation table bitmap. 
@@ -173,13 +202,13 @@ public:
 
 
 private:
-    uint32_t *allocTableMagic;      /* Detect if the pmem has been initialized */
-    uint8_t *bitmap;                /* Bitmap array start location */
-    void *mappedArea;               /* Mapped area start location */
+    uint32_t *allocTableMagic = nullptr;    /* Detect if the pmem has been initialized */
+    uint8_t *bitmap = nullptr;              /* Bitmap array start location */
+    void *mappedArea = nullptr;             /* Mapped area start location */
     /* Above members points to locations in NVM */
 
-    uint64_t length;                /* Bitmap length in bits (equivalent to # of blocks) */
-    int allocated = 0;              /* Allocated elements */
+    uint64_t length = 0;                    /* Bitmap length in bits (equivalent to # of blocks) */
+    uint64_t allocated = 0;                 /* Allocated elements */
 };
 
 

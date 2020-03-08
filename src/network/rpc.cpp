@@ -1,5 +1,5 @@
-#include "rpc.hpp"
-#include "debug.hpp"
+#include <rpc.hpp>
+#include <debug.hpp>
 
 /*
  * Constructor initializes `clusterConf` and `myNodeConf`.
@@ -24,6 +24,10 @@ RPCInterface::RPCInterface() : taskId(1)
         }
     }
 
+    auto idSet = clusterConf->getNodeIdSet();
+    for (int id : idSet)
+        peerIsAlive[id] = true;                 /* FIXME?: Assume true at start */
+
     socket = new RDMASocket();
 
     rpcListener = std::thread(&RPCInterface::rpcListen, this);
@@ -38,11 +42,11 @@ RPCInterface::~RPCInterface()
     delete socket;
     socket = nullptr;
 
-    if (cmdConf != nullptr) {
+    if (cmdConf) {
         delete cmdConf;
         cmdConf = nullptr;
     }
-    if (myNodeConf != nullptr) {
+    if (myNodeConf) {
         delete myNodeConf;
         myNodeConf = nullptr;
     }
@@ -84,7 +88,35 @@ void RPCInterface::rpcListen()
 
 int RPCInterface::rpcProcessCall(int peerId, const RPCMessage *message, RPCMessage *response)
 {
-    return 0;
+    memset(response, 0, sizeof(RPCMessage));
+    switch (message->type) {
+        case RPC_ALLOC: {
+            uint64_t ret = remoteAllocBlock(peerId);
+            if (ret < 0) {
+                d_warn("cannot alloc block for peer: %d", peerId);
+                response->type = RPC_RESPONSE_NAK;
+            }
+            else {
+                response->type = RPC_RESPONSE_ACK;
+                response->addr = ret;
+                response->count = 1;
+            }
+            return 0;
+        }
+        case RPC_DEALLOC: {
+            int ret = remoteDeallocBlock(peerId, message->addr);
+            if (ret < 0) {
+                d_err("failed to dealloc block for peer: %d", peerId);
+                response->type = RPC_RESPONSE_NAK;
+            }
+            else
+                response->type = RPC_RESPONSE_ACK;
+            return 0;
+        }
+        default:
+            break;
+    }
+    return -1;
 }
 
 int RPCInterface::remoteRPCCall(int peerId, const RPCMessage *request, RPCMessage *response)

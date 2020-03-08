@@ -69,9 +69,11 @@ public:
     std::optional<NodeConfig> findConfByIp(in_addr_t ipAddr) const;
     std::optional<NodeConfig> findConfByIpStr(const std::string &ipAddrStr) const;
     std::optional<NodeConfig> findMyself() const;
+    __always_inline std::set<int> getNodeIdSet() const { return nodeIds; }
 
 private:
     NodeConfig nodeConf[MAX_NODES];
+    std::set<int> nodeIds;
     std::unordered_map<in_addr_t, int> ip2id;
     std::unordered_map<std::string, int> host2id;
     int nodeCount;

@@ -66,16 +66,21 @@ ClusterConfig::ClusterConfig(string filename)
     ifstream fin(filename);
     if (!fin) {
         d_err("cannot open cluster config file: %s", filename.c_str());
-        return;
+        exit(-1);
     }
     
     int i;
     for (i = 0; fin >> nodeId >> hostname >> ipAddrStr >> nodeType; ++i) {
         if (i >= MAX_NODES) {
             d_err("there must be no more than %d nodes", MAX_NODES);
-            return;
+            exit(-1);
         }
 
+        if (nodeIds.find(nodeId) != nodeIds.end()) {
+            d_err("duplicate node ID: %d", nodeId);
+            exit(-1);
+        }
+        nodeIds.insert(nodeId);
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddr = inet_addr(ipAddrStr.c_str());
@@ -154,14 +159,14 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
     fd = open(conf.pmemDeviceName, O_RDWR);
     if (fd < 0) {
         d_err("cannot open pmem device: %s", conf.pmemDeviceName);
-        return;
+        exit(-1);
     }
 
     base = (uint64_t)mmap(NULL, conf.pmemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (unlikely(base == 0)) {
-        d_err("cannot perform mmap (size: %lu)", conf.pmemSize);
+        d_err("cannot perform mmap (size: %lu, err: %s)", conf.pmemSize, strerror(errno));
         close(fd);
-        return;
+        exit(-1);
     }
 
     capacity = conf.pmemSize;

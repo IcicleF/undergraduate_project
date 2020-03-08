@@ -4,7 +4,7 @@ project (galois LANGUAGES CXX)
 set (CMAKE_CXX_STANDARD 17)
 
 set (COMPILER_FLAGS "-O3 -march=native -mtune=native -Wall -g -D_FILE_OFFSET_BITS=64")
-set (CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} ${COMPILER_FLAGS}")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS}")
 
 # Find dependencies
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/modules")

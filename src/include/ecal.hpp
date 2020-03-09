@@ -26,6 +26,8 @@ public:
     {
         Block4K page;
         uint64_t index = 0;
+
+        Page(uint64_t index = 0) : index(index) { }
     };
 
     using BlockTy = RPCInterface::BlockTy;
@@ -59,15 +61,19 @@ private:
     uint64_t capacity = 0;
 
     uint8_t encodeMatrix[N * K];
-    uint8_t decodeMatrix[N * K];
     uint8_t gfTables[K * P * 32];
+    uint8_t encodeBuffer[P * BlockTy::capacity];
+    uint8_t *parity[P];
 
     __always_inline DataPosition getDataPos(uint64_t index)
     {
         int pagePerRow = clusterConf->getClusterSize() / N;
         return DataPosition(index / pagePerRow, (index % pagePerRow) * N);
     }
-    int recoverWriteBlock(uint64_t index);
+    __always_inline uint64_t getBlockShift(uint64_t index)
+    {
+        return memConf->getDataAreaShift() + allocTable->getShift(index);
+    }
 };
 
 #endif // ECAL_HPP

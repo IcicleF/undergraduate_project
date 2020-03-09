@@ -91,7 +91,8 @@ int RPCInterface::rpcProcessCall(int peerId, const RPCMessage *message, RPCMessa
     memset(response, 0, sizeof(RPCMessage));
     switch (message->type) {
         case RPC_ALLOC: {
-            uint64_t ret = remoteAllocBlock(peerId);
+            //uint64_t ret = remoteAllocBlock(peerId);
+            uint64_t ret = 0;
             if (ret < 0) {
                 d_warn("cannot alloc block for peer: %d", peerId);
                 response->type = RPC_RESPONSE_NAK;
@@ -104,7 +105,8 @@ int RPCInterface::rpcProcessCall(int peerId, const RPCMessage *message, RPCMessa
             return 0;
         }
         case RPC_DEALLOC: {
-            int ret = remoteDeallocBlock(peerId, message->addr);
+            //int ret = remoteDeallocBlock(peerId, message->addr);
+            int ret = 0;
             if (ret < 0) {
                 d_err("failed to dealloc block for peer: %d", peerId);
                 response->type = RPC_RESPONSE_NAK;

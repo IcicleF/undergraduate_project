@@ -21,7 +21,7 @@ ECAL::ECAL()
     rpcInterface->registerAllocTable(allocTable);
 
     if (clusterConf->getClusterSize() % N != 0) {
-        d_err("FIXME: clusterSize % N != 0, exit");
+        d_err("FIXME: clusterSize %% N != 0, exit");
         exit(-1);
     }
 
@@ -32,6 +32,9 @@ ECAL::ECAL()
     /* Initialize EC Matrices */
     gf_gen_cauchy1_matrix(encodeMatrix, N, K);
     ec_init_tables(K, P, &encodeMatrix[K * K], gfTables);
+
+    for (int i = 0; i < P; ++i)
+        parity[i] = encodeBuffer + i * BlockTy::size;
 }
 
 ECAL::~ECAL()
@@ -47,7 +50,7 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     static BlockTy readBuffer[K];
     static int decodeIndex[K], errIndex[K];
 
-    Page res;
+    Page res(index);
     memset(&res.page, 0, Block4K::capacity);
 
     auto pos = getDataPos(index);
@@ -59,12 +62,13 @@ ECAL::Page ECAL::readBlock(uint64_t index)
             errIndex[errs++] = j;
     
     /* Read data blocks from remote (or self) */
+    uint64_t blockShift = getBlockShift(pos.row);
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
-            int ret = rpcInterface->remoteReadFrom(decodeIndex[i], 0,
+            int ret = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
                     (uint64_t)(readBuffer + i), BlockTy::size);
             if (ret < 0) {
-                d_err("failed to RDMA read from peer: %d, corresponding block set to zero", decodeIndex[i]);
+                d_err("failed to RDMA read from peer: %d, block set to zero", decodeIndex[i]);
                 memset(readBuffer + i, 0, BlockTy::size);
             }
         }
@@ -110,4 +114,30 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     }
 
     return res;
+}
+
+void ECAL::writeBlock(ECAL::Page page)
+{
+    static uint8_t *data[K];
+    
+    for (int i = 0; i < K; ++i)
+        data[i] = page.page.data + i * BlockTy::size;
+    ec_encode_data(BlockTy::size, K, P, gfTables, data, parity);
+
+    DataPosition pos = getDataPos(page.index);
+    uint64_t blockShift = getBlockShift(pos.row);
+    for (int i = 0; i < N; ++i) {
+        int nodeId = pos.startNodeId + i;
+        uint8_t *blk = (i < K ? data[i] : parity[i - K]);
+        
+        if (nodeId == myNodeConf->id)
+            memcpy(allocTable->at(pos.row), blk, BlockTy::capacity);
+        else {
+            int ret = rpcInterface->remoteWriteTo(nodeId, blockShift,
+                    (uint64_t)blk, BlockTy::capacity);
+            if (ret < 0) {
+                d_err("failed to RDMA write to peer: %d", nodeId);
+            }
+        }
+    }
 }

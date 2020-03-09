@@ -66,7 +66,7 @@ public:
         bitmap = area + 8;
 
         /* Go read the initialized allocation table */
-        if (*allocTableMagic == allocTableMagic) {
+        if (*allocTableMagic == ALLOC_TABLE_MAGIC) {
             d_info("magic indicates that the allocation table has been initialized");
             shouldInit = false;
         }
@@ -85,7 +85,7 @@ public:
     ~AllocationTable() = default;
 
     /* Returns the pointer to the item with the designated index. */
-    __always_inline Ty *at(uint64_t index)
+    __always_inline Ty *at(uint64_t index) const
     {
         return reinterpret_cast<Ty *>(mappedArea) + index;
     }

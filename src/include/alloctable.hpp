@@ -10,11 +10,13 @@ template <int BlkSize>
 struct DataBlock
 {
     static const int capacity = BlkSize;
+    static const int size = BlkSize;
     uint8_t data[BlkSize];
 };
 
 using Block512B = DataBlock<512>;
 using Block1K = DataBlock<1024>;
+using Block2K = DataBlock<2048>;
 using Block4K = DataBlock<4096>;
 
 /*

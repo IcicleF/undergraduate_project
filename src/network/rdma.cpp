@@ -19,9 +19,9 @@ RDMASocket::RDMASocket()
     addr.sin6_family = AF_INET6;
 
     expectNonZero(ec = rdma_create_event_channel());
-    expectZero(rdma_create_id(ec, &cm, nullptr, RDMA_PS_TCP));
-    expectZero(rdma_bind_addr(cm, reinterpret_cast<sockaddr *>(&addr)));
-    expectZero(rdma_listen(cm, MAX_NODES));
+    expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
+    expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
+    expectZero(rdma_listen(listener, MAX_NODES));
 
     d_info("successfully created RDMASocket!");
 }

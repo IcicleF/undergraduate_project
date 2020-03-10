@@ -20,6 +20,7 @@ struct RDMAConnection
     int peerId;
     bool connected;
 
+    rdma_cm_id *cm;
     ibv_qp *qp;
     ibv_cq *cq;
     ibv_comp_channel *compChannel;
@@ -28,6 +29,8 @@ struct RDMAConnection
     uint8_t *sendRegion;
     uint8_t *recvRegion;
 };
+
+#if 0
 
 struct ConnInfo
 {
@@ -61,6 +64,8 @@ struct PeerInfo
     void *sendBuf = nullptr;            /* LOCAL RDMA send buffer */
     void *recvBuf = nullptr;            /* LOCAL RDMA receive buffer */
 };
+
+#endif
 
 /* Store all necessary resources for RDMA connection with other nodes */
 class RDMASocket
@@ -111,10 +116,11 @@ private:
     std::thread rdmaListener;
 #endif
     rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
-    rdma_cm_id *cm = nullptr;               /* Common RDMA connection manager */
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
     ibv_cq *cq[MAX_CQS];                    /* CQ array */
+
+    rdma_cm_id *listener = nullptr;         /* RDMA listener */
 };
 
 #endif // RDMA_HPP

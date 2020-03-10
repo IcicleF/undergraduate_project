@@ -1,7 +1,7 @@
 #if !defined(ALLOCTABLE_HPP)
 #define ALLOCTABLE_HPP
 
-#include "common.hpp"
+#include "commons.hpp"
 #include "config.hpp"
 #include "debug.hpp"
 
@@ -79,7 +79,7 @@ public:
 
         if (shouldInit) {
             memset(bitmap, -1, bitmapBytes);                        /* Initialize to all-ones */
-            mem_force_flush(allocTableMagic);                       /* persist */
+            __mem_clflush(allocTableMagic);                       /* persist */
         }
     }
     ~AllocationTable() = default;

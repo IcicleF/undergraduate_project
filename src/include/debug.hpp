@@ -1,5 +1,5 @@
 /*
- * config.h
+ * debug.hpp
  * 
  * Copyright (c) 2020 Storage Research Group, Tsinghua University
  * 

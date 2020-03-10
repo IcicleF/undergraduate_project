@@ -9,35 +9,19 @@
 
 RDMASocket::RDMASocket()
 {
-    if (cmdConf == nullptr || clusterConf == nullptr || memConf == nullptr || myNodeConf == nullptr) {
+    if (!cmdConf || !clusterConf || !memConf || !myNodeConf) {
         d_err("all configurations should be initialized!");
         exit(-1);
     }
 
-    if (createResources() < 0) {
-        d_err("failed to create resources");
-        exit(-1);
-    }
+    sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(sockaddr));
+    addr.sin6_family = AF_INET6;
 
-    int nodeCount = clusterConf->getClusterSize();
-    for (int i = 0; i < nodeCount; ++i) {
-        NodeConfig nodeConf = (*clusterConf)[i];
-        if (nodeConf.id >= myNodeConf->id)
-            continue;
-        if (nodeConf.type == NODE_CLI && myNodeConf->type == NODE_CLI)
-            continue;
-        if (rdmaConnect(nodeConf.id) < 0) {
-            d_err("failed to connect with peer: %d", nodeConf.id);
-            exit(-1);
-        }
-        else
-            d_info("successfully connected with peer: %d", nodeConf.id);
-    }
-
-    if (rdmaListen(cmdConf->tcpPort) < 0) {
-        d_err("failed to listen incoming RDMA connections");
-        exit(-1);
-    }
+    expectNonZero(ec = rdma_create_event_channel());
+    expectZero(rdma_create_id(ec, &cm, nullptr, RDMA_PS_TCP));
+    expectZero(rdma_bind_addr(cm, reinterpret_cast<sockaddr *>(&addr)));
+    expectZero(rdma_listen(cm, MAX_NODES));
 
     d_info("successfully created RDMASocket!");
 }

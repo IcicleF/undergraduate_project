@@ -1,7 +1,7 @@
 #if !defined(MESSAGE_HPP)
 #define MESSAGE_HPP
 
-#include "common.hpp"
+#include "commons.hpp"
 
 #define RPC_ALLOC               0x00000001
 #define RPC_DEALLOC             0x00000002

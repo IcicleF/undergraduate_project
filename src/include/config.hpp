@@ -13,24 +13,23 @@
 #define FUSE_USE_VERSION 39
 #endif
 
-#include <arpa/inet.h>
-#include <fuse.h>
-#include <sys/mman.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-#include "common.hpp"
+#include "commons.hpp"
 
 /* FUSE command line arguments */
 struct CmdLineConfig
 {
-    void setAsDefault();
-    void initFromFuseArgs(fuse_args *args);
+    CmdLineConfig();
 
-public:
-    char *clusterConfigFile = NULL;     /* Cluster configuration file name */
-    char *pmemDeviceName = NULL;        /* Persistent memory device (e.g. /dev/dax0.0) */
+    std::string clusterConfigFile;      /* Cluster configuration file name */
+    std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
     uint64_t pmemSize;                  /* Data pool size in blocks */
-    int tcpPort;                        /* TCP port used to establish connections */
-    char *ibDeviceName = NULL;          /* InfiniBand device name (e.g. ib0) */
+    std::string ipv6PortStr;            /* IPv6 port (string) to establish connections */
+    std::string ibDeviceName;           /* InfiniBand device name (e.g. ib0) */
     int ibPort;                         /* InfiniBand port */
 };
 
@@ -50,7 +49,8 @@ struct NodeConfig
 {
     int id = -1;
     std::string hostname;
-    in_addr_t ipAddr;
+    std::string ipv6AddrStr;
+    addrinfo ai;
     NodeType type;
 };
 
@@ -66,16 +66,15 @@ public:
     __always_inline NodeConfig operator[](int index) const { return nodeConf[index]; }
     std::optional<NodeConfig> findConfById(int id) const;
     std::optional<NodeConfig> findConfByHostname(const std::string &hostname) const;
-    std::optional<NodeConfig> findConfByIp(in_addr_t ipAddr) const;
-    std::optional<NodeConfig> findConfByIpStr(const std::string &ipAddrStr) const;
+    std::optional<NodeConfig> findConfByIPv6Str(const std::string &ipv6AddrStr) const;
     std::optional<NodeConfig> findMyself() const;
     __always_inline std::set<int> getNodeIdSet() const { return nodeIds; }
 
 private:
     NodeConfig nodeConf[MAX_NODES];
     std::set<int> nodeIds;
-    std::unordered_map<in_addr_t, int> ip2id;
-    std::unordered_map<std::string, int> host2id;
+    std::unordered_map<std::string, int> ip2id;         /* IPv6 address string to nodeId */
+    std::unordered_map<std::string, int> host2id;       /* Hostname to nodeId */
     int nodeCount;
     int cmId;
 };

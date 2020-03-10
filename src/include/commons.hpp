@@ -1,5 +1,5 @@
 /*
- * common.h
+ * commons.hpp
  * 
  * Copyright (c) 2020 Storage Research Group, Tsinghua University
  * 
@@ -34,9 +34,12 @@
 #include <string>
 #include <atomic>
 #include <thread>
+#include <pthread.h>            /* pthread.h also imported for convenience */
 #include <chrono>
 #include <mutex>
 #include <optional>
+
+#include "debug.hpp"
 
 #define MAX_NODES               32
 #define MAX_MDS_BAKS            3
@@ -52,9 +55,9 @@
 
 #define RDMA_BUF_SIZE           4096
 #define ALLOC_TABLE_MAGIC       0xAB71E514
+#define MAX_CQS                 4
 
-
-#define mem_force_flush(addr)               \
+#define __mem_clflush(addr)                 \
     asm volatile (                          \
         "clflush %0;"                       \
         "sfence"                            \
@@ -63,6 +66,11 @@
 
 #define likely(x)               __builtin_expect(!!(x), 1)
 #define unlikely(x)             __builtin_expect(!!(x), 0)
+
+#define expectZero(x)           do { if ((x)) { d_err(#x "failed (!= 0)"); } } while (0)
+#define expectNonZero(x)        do { if (!(x)) { d_err(#x "failed (== 0)"); } } while (0)
+#define expectPositive(x)       do { if ((x) <= 0) { d_err(#x "failed (<= 0)"); } } while (0)
+#define expectNegative(x)       do { if ((x) >= 0) { d_err(#x "failed (>= 0)"); } } while (0)
 
 #ifdef __packed
 #undef __packed

@@ -69,10 +69,11 @@ int main(int argc, char **argv)
 {
     isRunning.store(true);
 
-    fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    // fuse_args args = FUSE_ARGS_INIT(argc, argv);
     
     cmdConf = new CmdLineConfig();
-    cmdConf->initFromFuseArgs(&args);
+    cmdConf->setAsDefault();
+    // cmdConf->initFromFuseArgs(&args);
 
     ECAL *ecal = new ECAL();
     uint64_t maxIndex = ecal->getClusterCapacity();

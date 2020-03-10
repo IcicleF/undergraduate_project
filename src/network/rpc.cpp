@@ -127,11 +127,11 @@ int RPCInterface::remoteRPCCall(int peerId, const RPCMessage *request, RPCMessag
     memcpy(sendBuf, request, sizeof(RPCMessage));
 
     sendBuf->uid = taskId.fetch_add(1);
-    mem_force_flush(sendBuf);
+    __mem_clflush(sendBuf);
 
     auto *recvBuf = reinterpret_cast<RPCMessage *>(memConf->getReceiveBuffer(peerId));
     recvBuf->type = 0;
-    mem_force_flush(recvBuf);
+    __mem_clflush(recvBuf);
 
     if (socket->postSend(peerId, (uint64_t)sendBuf, sizeof(RPCMessage)) < 0) {
         d_err("cannot send RPC call via RDMA (to peer: %d)", peerId);

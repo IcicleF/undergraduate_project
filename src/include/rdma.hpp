@@ -3,28 +3,32 @@
 
 #include <unistd.h>
 #include <inttypes.h>
-#include <endian.h>
 #include <byteswap.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
-#include <infiniband/verbs.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 
+#include <infiniband/verbs.h>
+#include <rdma/rdma_cma.h>
+
 #include "config.hpp"
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#define htonll(x) bswap_64((uint64_t)(x))
-#define ntohll(x) bswap_64((uint64_t)(x))
-#elif __BYTE_ORDER == __BIG_ENDIAN
-#define htonll(x) ((uint64_t)(x))
-#define ntohll(x) ((uint64_t)(x))
-#else
-#error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
-#endif
+struct RDMAConnection
+{
+    int peerId;
+    bool connected;
 
-/* Structure to exchange data which is needed to connect the QPs */
+    ibv_qp *qp;
+    ibv_cq *cq;
+    ibv_comp_channel *compChannel;
+    pthread_t cqPoller;
+
+    uint8_t *sendRegion;
+    uint8_t *recvRegion;
+};
+
 struct ConnInfo
 {
     uint64_t baseAddr;                  /* REMOTE RDMA buffer (memConf->base)
@@ -63,12 +67,10 @@ class RDMASocket
 {
 public:
     explicit RDMASocket();
-    RDMASocket(const RDMASocket &) = delete;
-    RDMASocket &operator=(const RDMASocket &) = delete;
     ~RDMASocket();
-
-    int createResources();
-    void disposeResources();
+    RDMASocket(const RDMASocket &) = delete;
+    RDMASocket(const RDMASocket &&) = delete;
+    RDMASocket &operator=(const RDMASocket &) = delete;
 
     int rdmaConnect(int peerId);
     void verboseQP(int peerId);
@@ -94,6 +96,7 @@ private:
     int rdmaListen(int port);
 
 private:
+#if 0
     struct
     {
         ibv_device_attr deviceAttr;         /* Device attributes */
@@ -106,6 +109,12 @@ private:
         PeerInfo peers[MAX_NODES];          /* Peer connections */
     } rs;
     std::thread rdmaListener;
+#endif
+    rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
+    rdma_cm_id *cm = nullptr;               /* Common RDMA connection manager */
+    ibv_pd *pd = nullptr;                   /* Common protection domain */
+    ibv_mr *mr = nullptr;                   /* Common memory region */
+    ibv_cq *cq[MAX_CQS];                    /* CQ array */
 };
 
 #endif // RDMA_HPP

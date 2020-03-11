@@ -116,11 +116,16 @@ private:
 #endif
 
     void listenRDMAEvents();
-    void onConnect(int peerId, rdma_cm_id *cmId);
-    void onConnectionEstablished(int peerId, rdma_cm_id *cmId);
-    void onDisconnect(int peerId, rdma_cm_id *cmId);
+    void onAddrResolved(rdma_cm_event *event);
+    void onRouteResolved(rdma_cm_event *event);
+    void onConnectionRequest(rdma_cm_event *event);
+    void onConnectionEstablished(rdma_cm_event *event);
+    void onDisconnected(rdma_cm_event *event);
 
-    void buildContext(ibv_context *ctx);
+    void buildResources(ibv_context *ctx);
+    void buildConnection(rdma_cm_id *cmId);
+    void buildConnParam(rdma_conn_param *param);
+    void destroyConnection(rdma_cm_id *cmId);
 
     void listenCQ(int index);
 
@@ -136,6 +141,8 @@ private:
     std::thread ecPoller;                   /* listenRDMAEvents thread */
 
     RDMAConnection peers[MAX_NODES];        /* Peer connections */
+    std::map<uint64_t, int> cm2id;          /* Map rdma_cm_id pointer to peer */
+    uint32_t nodeIDBuf;                     /* Send my node ID on connection */
 
     bool shouldRun;
 };

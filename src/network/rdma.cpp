@@ -15,6 +15,7 @@ RDMASocket::RDMASocket()
     }
 
     shouldRun = true;
+    nodeIDBuf = myNodeConf->id;
 
     sockaddr_in6 addr;
     memset(&addr, 0, sizeof(sockaddr));
@@ -34,7 +35,19 @@ RDMASocket::RDMASocket()
     expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
-    
+
+    // Connect to all peers with id < myId
+    for (int i = 0; i < myNodeConf->id; ++i) {
+        auto _peerNode = clusterConf->findConfById(i);
+        expectTrue(_peerNode.has_value());
+        auto peerNode = _peerNode.value();
+
+        expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
+        cm2id[(uint64_t)peers[i].cmId] = i;
+        expectZero(rdma_resolve_addr(peers[i].cmId, nullptr, peerNode.ai.ai_addr, ADDR_RESOLVE_TIMEOUT));
+    }
+
+    // Start after important events polled
     ecPoller = std::thread(&RDMASocket::listenRDMAEvents, this);
 
     d_info("successfully created RDMASocket!");
@@ -60,62 +73,79 @@ RDMASocket::~RDMASocket()
         if (cq[i])
             ibv_destroy_cq(cq[i]);
     
-    ibv_dereg_mr(mr);
-    ibv_dealloc_pd(pd);
-    rdma_destroy_id(listener);
-    rdma_destroy_event_channel(ec);
+    if (mr)
+        ibv_dereg_mr(mr);
+    if (pd)
+        ibv_dealloc_pd(pd);
+    if (listener)
+        rdma_destroy_id(listener);
+    if (ec)
+        rdma_destroy_event_channel(ec);
 }
 
 /* This function is expected to run as a single thread. */
 void RDMASocket::listenRDMAEvents()
 {
+    typedef void (RDMASocket:: *EventHandler)(rdma_cm_event *);
+    static EventHandler handlers[] = {
+        [RDMA_CM_EVENT_ADDR_RESOLVED] = &onAddrResolved,
+        [RDMA_CM_EVENT_ROUTE_RESOLVED] = &onRouteResolved,
+        [RDMA_CM_EVENT_CONNECT_REQUEST] = &onConnectionRequest,
+        [RDMA_CM_EVENT_ESTABLISHED] = &onConnectionEstablished,
+        [RDMA_CM_EVENT_DISCONNECTED] = &onDisconnected
+    };
+
     rdma_cm_event *event;
     while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
-        switch (event->event) {
-            case RDMA_CM_EVENT_CONNECT_REQUEST:
-                onConnect(0, event->id);
-                break;
-            case RDMA_CM_EVENT_ESTABLISHED:
-                onConnectionEstablished(0, event->id);
-                break;
-            case RDMA_CM_EVENT_DISCONNECTED:
-                onDisconnect(0, event->id);
-                break;
-            default:
-                break;
-        }
+        EventHandler handler = handlers[event->event];
+        (this->*handler)(event);
         rdma_ack_cm_event(event);
     }
 }
 
-void RDMASocket::onConnect(int peerId, rdma_cm_id *cmId)
+/* As a client, handle when remote address is resolved */
+void RDMASocket::onAddrResolved(rdma_cm_event *event)
 {
-    buildContext(cmId->verbs);
-
-    ibv_qp_init_attr qp_init_attr;
-    memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
-    qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.sq_sig_all = 1;
-    qp_init_attr.send_cq = cq[CQ_SEND];
-    qp_init_attr.recv_cq = cq[CQ_RECV];
-    qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
-    qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
-    qp_init_attr.cap.max_send_sge = 1;
-    qp_init_attr.cap.max_recv_sge = 1;
-
-    expectZero(rdma_create_qp(cmId, pd, &qp_init_attr));
-
-    peers[peerId].peerId = peerId;
-    peers[peerId].cmId = cmId;
-    peers[peerId].qp = cmId->qp;
-    peers[peerId].sendCQ = cq[CQ_SEND];
-    peers[peerId].recvCQ = cq[CQ_RECV];
-    peers[peerId].connected = false;
-
-    postReceive(peerId, RDMA_BUF_SIZE);
+    buildConnection(event->id);
+    expectZero(rdma_resolve_route(event->id, ADDR_RESOLVE_TIMEOUT));
 }
 
-void RDMASocket::buildContext(ibv_context *ctx)
+/* As a client, handle when connection route is resolved */
+void RDMASocket::onRouteResolved(rdma_cm_event *event)
+{
+    rdma_conn_param param;
+    buildConnParam(&param);
+    expectZero(rdma_connect(event->id, &param));
+}
+
+/* As a server, handle when an incoming connection request appears */
+void RDMASocket::onConnectionRequest(rdma_cm_event *event)
+{
+    auto *nodeIdBuf = reinterpret_cast<const uint32_t *>(event->param.conn.private_data);
+    cm2id[(uint64_t)event->id] = nodeIdBuf[0];
+    buildConnection(event->id);
+
+    rdma_conn_param param;
+    buildConnParam(&param);
+
+    expectZero(rdma_accept(event->id, &param));
+}
+
+/* As a server or client, handle when a connection is established */
+void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
+{
+    RDMAConnection *peer = peers + cm2id[(uint64_t)event];
+    expectTrue(peer == reinterpret_cast<RDMAConnection *>(event->id->context));
+    peer->connected = true;
+}
+
+/* As a server or client, handle when a connection is lost */
+void RDMASocket::onDisconnected(rdma_cm_event *event)
+{
+    destroyConnection(event->id);
+}
+
+void RDMASocket::buildResources(ibv_context *ctx)
 {
     if (this->ctx) {
         if (this->ctx != ctx)
@@ -131,6 +161,62 @@ void RDMASocket::buildContext(ibv_context *ctx)
         expectZero(ibv_req_notify_cq(cq[i], 0));
         cqPoller[i] = std::thread(&RDMASocket::listenCQ, this, i);
     }
+    int mrFlags = IBV_ACCESS_LOCAL_WRITE |
+                  IBV_ACCESS_REMOTE_READ |
+                  IBV_ACCESS_REMOTE_WRITE |
+                  IBV_ACCESS_REMOTE_ATOMIC;
+    expectNonZero(mr = ibv_reg_mr(pd, memConf->getMemory(), memConf->getCapacity(), mrFlags));
+}
+
+void RDMASocket::buildConnection(rdma_cm_id *cmId)
+{
+    buildResources(cmId->verbs);
+
+    ibv_qp_init_attr qp_init_attr;
+    memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
+    qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.sq_sig_all = 1;
+    qp_init_attr.send_cq = cq[CQ_SEND];
+    qp_init_attr.recv_cq = cq[CQ_RECV];
+    qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_send_sge = 1;
+    qp_init_attr.cap.max_recv_sge = 1;
+
+    expectZero(rdma_create_qp(cmId, pd, &qp_init_attr));
+
+    int peerId = cm2id[(uint64_t)cmId];
+    peers[peerId].peerId = peerId;
+    peers[peerId].cmId = cmId;
+    peers[peerId].qp = cmId->qp;
+    peers[peerId].sendCQ = cq[CQ_SEND];
+    peers[peerId].recvCQ = cq[CQ_RECV];
+    peers[peerId].connected = false;
+    
+    cmId->context = reinterpret_cast<void *>(peers + peerId);
+
+    postReceive(peerId, RDMA_BUF_SIZE);
+}
+
+void RDMASocket::buildConnParam(rdma_conn_param *param)
+{
+    memset(param, 0, sizeof(rdma_conn_param));
+    param->initiator_depth = MAX_REQS;
+    param->responder_resources = MAX_REQS;
+    param->rnr_retry_count = 7;             /* infinite retry */
+    param->private_data = reinterpret_cast<const void *>(&nodeIDBuf);
+    param->private_data_len = sizeof(uint32_t);
+}
+
+void RDMASocket::destroyConnection(rdma_cm_id *cmId)
+{
+    int peerId = cm2id[(uint64_t)cmId];
+    peers[peerId].connected = false;
+    peers[peerId].qp = nullptr;
+    peers[peerId].cmId = nullptr;
+
+    rdma_destroy_qp(cmId);
+    rdma_destroy_id(cmId);
 }
 
 /*

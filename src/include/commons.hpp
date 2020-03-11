@@ -43,11 +43,8 @@
 #define MAX_NODES               32
 #define MAX_MDS_BAKS            3
 
-#define MAX_HOSTNAME_LEN        128
-#define MAX_CONN_RETRIES        3
-#define CONN_RETRY_INTERVAL     (1000 * 1000)
-#define MAX_QUEUED_CONNS        5
-
+#define ADDR_RESOLVE_TIMEOUT    3000
+#define MAX_REQS                16
 #define MAX_QP_DEPTH            64
 #define MAX_DEST_RD_ATOMIC      16
 #define MAX_CQS                 2
@@ -70,6 +67,8 @@
 
 #define expectZero(x)           do { if ((x)) { d_err(#x "  failed (!= 0)"); } } while (0)
 #define expectNonZero(x)        do { if (!(x)) { d_err(#x "  failed (== 0)"); } } while (0)
+#define expectTrue(x)           do { if (!(x)) { d_err(#x "  failed (false)"); } } while (0)
+#define expectFalse(x)          do { if ((x)) { d_err(#x "  failed (true)"); } } while (0)
 #define expectPositive(x)       do { if ((x) <= 0) { d_err(#x "  failed (<= 0)"); } } while (0)
 #define expectNegative(x)       do { if ((x) >= 0) { d_err(#x "  failed (>= 0)"); } } while (0)
 

@@ -14,20 +14,23 @@
 #include <rdma/rdma_cma.h>
 
 #include "config.hpp"
+#include "message.hpp"
 
 struct RDMAConnection
 {
     int peerId;
     bool connected;
 
-    rdma_cm_id *cm;
-    ibv_qp *qp;
-    ibv_cq *cq;
-    ibv_comp_channel *compChannel;
-    pthread_t cqPoller;
+    rdma_cm_id *cmId;                   /* CM: allocated */
+    ibv_qp *qp;                         /* QP: allocated */
+    ibv_cq *sendCQ;                     /* sendCQ: shared */
+    ibv_cq *recvCQ;                     /* recvCQ: shared */
+    ibv_comp_channel *compChannel;      /* Channel: shared */
 
-    uint8_t *sendRegion;
-    uint8_t *recvRegion;
+    ibv_mr peerMR;                      /* MR of peer */
+    
+    uint8_t *sendRegion;                /* Send Region: shared */
+    uint8_t *recvRegion;                /* Recv Region: shared */
 };
 
 #if 0
@@ -74,16 +77,15 @@ public:
     explicit RDMASocket();
     ~RDMASocket();
     RDMASocket(const RDMASocket &) = delete;
-    RDMASocket(const RDMASocket &&) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;
 
     int rdmaConnect(int peerId);
     void verboseQP(int peerId);
 
-    int postSend(int peerId, uint64_t localSrc, uint64_t length);
-    int postReceive(int peerId, uint64_t length);
-    int postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
-    int postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length);
+    void postSend(int peerId, uint64_t localSrc, uint64_t length);
+    void postReceive(int peerId, uint64_t length);
+    void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
+    void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length);
 
     int pollCompletion(ibv_wc *wc);
     int pollOnce(ibv_wc *wc);
@@ -96,9 +98,6 @@ private:
     int modifyQPtoInit(PeerInfo *peer);
     int modifyQPtoRTR(PeerInfo *peer);
     int modifyQPtoRTS(PeerInfo *peer);
-
-    void rdmaAccept(int sock);
-    int rdmaListen(int port);
 
 private:
 #if 0
@@ -115,12 +114,30 @@ private:
     } rs;
     std::thread rdmaListener;
 #endif
-    rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
+
+    void listenRDMAEvents();
+    void onConnect(int peerId, rdma_cm_id *cmId);
+    void onConnectionEstablished(int peerId, rdma_cm_id *cmId);
+    void onDisconnect(int peerId, rdma_cm_id *cmId);
+
+    void buildContext(ibv_context *ctx);
+
+    void listenCQ(int index);
+
+    ibv_context *ctx = nullptr;
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
     ibv_cq *cq[MAX_CQS];                    /* CQ array */
+    ibv_comp_channel *compChannel[MAX_CQS]; /* Complete channel array */
+    std::thread cqPoller[MAX_CQS];          /* listenCQ thread */
 
+    rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
     rdma_cm_id *listener = nullptr;         /* RDMA listener */
+    std::thread ecPoller;                   /* listenRDMAEvents thread */
+
+    RDMAConnection peers[MAX_NODES];        /* Peer connections */
+
+    bool shouldRun;
 };
 
 #endif // RDMA_HPP

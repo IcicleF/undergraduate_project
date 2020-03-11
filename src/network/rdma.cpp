@@ -14,21 +14,123 @@ RDMASocket::RDMASocket()
         exit(-1);
     }
 
+    shouldRun = true;
+
     sockaddr_in6 addr;
     memset(&addr, 0, sizeof(sockaddr));
     addr.sin6_family = AF_INET6;
+
+    for (int i = 0; i < MAX_NODES; ++i) {
+        peers[i].cmId = nullptr;
+        peers[i].qp = nullptr;
+        peers[i].sendCQ = nullptr;
+        peers[i].recvCQ = nullptr;
+        peers[i].compChannel = nullptr;
+        peers[i].sendRegion = nullptr;
+        peers[i].recvRegion = nullptr;
+    }
 
     expectNonZero(ec = rdma_create_event_channel());
     expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
+    
+    ecPoller = std::thread(&RDMASocket::listenRDMAEvents, this);
 
     d_info("successfully created RDMASocket!");
 }
 
 RDMASocket::~RDMASocket()
 {
-    disposeResources();
+    shouldRun = false;
+
+    for (int i = 0; i < MAX_CQS; ++i)
+        if (cqPoller[i].joinable())
+            cqPoller[i].join();
+    if (ecPoller.joinable())
+        ecPoller.join();
+
+    for (int i = 0; i < MAX_NODES; ++i) {
+        if (peers[i].qp) 
+            ibv_destroy_qp(peers[i].qp);
+        if (peers[i].cmId)
+            rdma_destroy_id(peers[i].cmId);
+    }
+    for (int i = 0; i < MAX_CQS; ++i)
+        if (cq[i])
+            ibv_destroy_cq(cq[i]);
+    
+    ibv_dereg_mr(mr);
+    ibv_dealloc_pd(pd);
+    rdma_destroy_id(listener);
+    rdma_destroy_event_channel(ec);
+}
+
+/* This function is expected to run as a single thread. */
+void RDMASocket::listenRDMAEvents()
+{
+    rdma_cm_event *event;
+    while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
+        switch (event->event) {
+            case RDMA_CM_EVENT_CONNECT_REQUEST:
+                onConnect(0, event->id);
+                break;
+            case RDMA_CM_EVENT_ESTABLISHED:
+                onConnectionEstablished(0, event->id);
+                break;
+            case RDMA_CM_EVENT_DISCONNECTED:
+                onDisconnect(0, event->id);
+                break;
+            default:
+                break;
+        }
+        rdma_ack_cm_event(event);
+    }
+}
+
+void RDMASocket::onConnect(int peerId, rdma_cm_id *cmId)
+{
+    buildContext(cmId->verbs);
+
+    ibv_qp_init_attr qp_init_attr;
+    memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
+    qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.sq_sig_all = 1;
+    qp_init_attr.send_cq = cq[CQ_SEND];
+    qp_init_attr.recv_cq = cq[CQ_RECV];
+    qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_send_sge = 1;
+    qp_init_attr.cap.max_recv_sge = 1;
+
+    expectZero(rdma_create_qp(cmId, pd, &qp_init_attr));
+
+    peers[peerId].peerId = peerId;
+    peers[peerId].cmId = cmId;
+    peers[peerId].qp = cmId->qp;
+    peers[peerId].sendCQ = cq[CQ_SEND];
+    peers[peerId].recvCQ = cq[CQ_RECV];
+    peers[peerId].connected = false;
+
+    postReceive(peerId, RDMA_BUF_SIZE);
+}
+
+void RDMASocket::buildContext(ibv_context *ctx)
+{
+    if (this->ctx) {
+        if (this->ctx != ctx)
+            d_err("more than one context...");
+        return;
+    }
+
+    this->ctx = ctx;
+    expectNonZero(pd = ibv_alloc_pd(this->ctx));
+    for (int i = 0; i < MAX_CQS; ++i) {
+        expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
+        expectNonZero(cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel[i], 0));
+        expectZero(ibv_req_notify_cq(cq[i], 0));
+        cqPoller[i] = std::thread(&RDMASocket::listenCQ, this, i);
+    }
 }
 
 /*
@@ -267,95 +369,75 @@ void RDMASocket::verboseQP(int peerId)
 /*
  * Issue a send request to the designated peer.
  */
-int RDMASocket::postSend(int peerId, uint64_t localSrc, uint64_t length)
+void RDMASocket::postSend(int peerId, uint64_t localSrc, uint64_t length)
 {
-    ibv_send_wr sr;
+    ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localSrc;
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = mr->lkey;
 
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
-    sr.imm_data = myNodeConf->id;
-    sr.opcode = IBV_WR_SEND_WITH_IMM;
-    sr.send_flags = IBV_SEND_SIGNALED;
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = 0;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.imm_data = myNodeConf->id;
+    wr.opcode = IBV_WR_SEND_WITH_IMM;
+    wr.send_flags = IBV_SEND_SIGNALED;
 
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA send to peer: %d", peerId);
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
 
-/*
- * Prepare for incoming send requests from the designated peer.
- * Poll at CQ for the result.
- * Let length = 0 to allow any send lengths.
- * The incoming sends will be stored at the receive buffer for this peer (see code).
- */
-int RDMASocket::postReceive(int peerId, uint64_t length)
+void RDMASocket::postReceive(int peerId, uint64_t length)
 {
-    ibv_recv_wr rr;
+    ibv_recv_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_recv_wr *bad_wr;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = (uint64_t)memConf->getReceiveBuffer(peerId);
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = mr->lkey;
 
-    memset(&rr, 0, sizeof(ibv_recv_wr));
-    rr.wr_id = 0;
-    rr.sg_list = &sge;
-    rr.num_sge = 1;
+    memset(&wr, 0, sizeof(ibv_recv_wr));
+    wr.wr_id = 0;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.next = nullptr;
 
-    if (ibv_post_recv(rs.peers[peerId].qp, &rr, &bad_wr) < 0) {
-        d_err("failed to post RDMA recv");
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_recv(peers[peerId].qp, &wr, &badWr));
 }
 
 /*
  * Issue a write request to the designated peer.
  * Users should pass in a remote "address shift", since this function will add it to the base address.
  */
-int RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm)
+void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm)
 {
-    ibv_send_wr sr;
+    ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localSrc;
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = mr->lkey;
 
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = 0;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
     if (imm == -1)
-        sr.opcode = IBV_WR_RDMA_WRITE;
+        wr.opcode = IBV_WR_RDMA_WRITE;
     else {
-        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-        sr.imm_data = imm;
+        wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        wr.imm_data = imm;
     }
-    sr.send_flags = IBV_SEND_SIGNALED;
-    sr.wr.rdma.remote_addr = rs.peers[peerId].baseAddr + remoteDstShift;
-    sr.wr.rdma.rkey = rs.peers[peerId].rkey;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteDstShift;
+    wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA write (%s)", strerror(errno));
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
 
 /*
@@ -363,31 +445,26 @@ int RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc
  * Users should pass in a remote "address shift", since this function will add it
  * to the base address.
  */
-int RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
+void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
 {
-    ibv_send_wr sr;
+    ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localDst;
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = mr->lkey;
 
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
-    sr.opcode = IBV_WR_RDMA_READ;
-    sr.send_flags = IBV_SEND_SIGNALED;
-    sr.wr.rdma.remote_addr = rs.peers[peerId].baseAddr + remoteSrcShift;
-    sr.wr.rdma.rkey = rs.peers[peerId].rkey;
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = 0;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_READ;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteSrcShift;
+    wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA read (%s)", strerror(errno));
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
 
 /*

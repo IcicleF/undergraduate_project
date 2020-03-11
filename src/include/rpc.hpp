@@ -37,8 +37,8 @@ public:
     }
     
     void rpcListen();
-    int rpcProcessCall(int peerId, const RPCMessage *message, RPCMessage *response);
-    int remoteRPCCall(int peerId, const RPCMessage *request, RPCMessage *response);
+    int rpcProcessCall(int peerId, const Message *message, Message *response);
+    int remoteRPCCall(int peerId, const Message *request, Message *response);
 
     __always_inline RDMASocket *getRDMASocket() const { return socket; }
     __always_inline void registerAllocTable(AllocationTable<BlockTy> *allocTable)

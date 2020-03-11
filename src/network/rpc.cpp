@@ -64,8 +64,8 @@ void RPCInterface::rpcListen()
 
         if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
             int peerId = wc.imm_data;
-            auto *message = reinterpret_cast<RPCMessage *>(memConf->getReceiveBuffer(peerId));
-            auto *response = reinterpret_cast<RPCMessage *>(memConf->getSendBuffer(peerId));
+            auto *message = reinterpret_cast<Message *>(memConf->getReceiveBuffer(peerId));
+            auto *response = reinterpret_cast<Message *>(memConf->getSendBuffer(peerId));
             if (rpcProcessCall(peerId, message, response) < 0) {
                 d_err("cannot process RPC request from peer: %d, stop", peerId);
                 return;
@@ -76,7 +76,7 @@ void RPCInterface::rpcListen()
 
             /* Use RDMA write to send reply. TO BE EXAMINED */
             if (socket->postWrite(peerId, memConf->getReceiveBufferShift(myNodeConf->id),
-                    (uint64_t)response, sizeof(RPCMessage), myNodeConf->id) < 0) {
+                    (uint64_t)response, sizeof(Message), myNodeConf->id) < 0) {
                 d_err("cannot write reply to peer: %d, stop", peerId);
                 return;
             }
@@ -86,9 +86,9 @@ void RPCInterface::rpcListen()
     }
 }
 
-int RPCInterface::rpcProcessCall(int peerId, const RPCMessage *message, RPCMessage *response)
+int RPCInterface::rpcProcessCall(int peerId, const Message *message, Message *response)
 {
-    memset(response, 0, sizeof(RPCMessage));
+    memset(response, 0, sizeof(Message));
     switch (message->type) {
         case RPC_ALLOC: {
             //uint64_t ret = remoteAllocBlock(peerId);
@@ -121,24 +121,24 @@ int RPCInterface::rpcProcessCall(int peerId, const RPCMessage *message, RPCMessa
     return -1;
 }
 
-int RPCInterface::remoteRPCCall(int peerId, const RPCMessage *request, RPCMessage *response)
+int RPCInterface::remoteRPCCall(int peerId, const Message *request, Message *response)
 {
-    auto *sendBuf = reinterpret_cast<RPCMessage *>(memConf->getSendBuffer(peerId));
-    memcpy(sendBuf, request, sizeof(RPCMessage));
+    auto *sendBuf = reinterpret_cast<Message *>(memConf->getSendBuffer(peerId));
+    memcpy(sendBuf, request, sizeof(Message));
 
     sendBuf->uid = taskId.fetch_add(1);
     __mem_clflush(sendBuf);
 
-    auto *recvBuf = reinterpret_cast<RPCMessage *>(memConf->getReceiveBuffer(peerId));
+    auto *recvBuf = reinterpret_cast<Message *>(memConf->getReceiveBuffer(peerId));
     recvBuf->type = 0;
     __mem_clflush(recvBuf);
 
-    if (socket->postSend(peerId, (uint64_t)sendBuf, sizeof(RPCMessage)) < 0) {
+    if (socket->postSend(peerId, (uint64_t)sendBuf, sizeof(Message)) < 0) {
         d_err("cannot send RPC call via RDMA (to peer: %d)", peerId);
         return -1;
     }
     
     while ((recvBuf->type & RPC_RESPONSE) == 0);
-    memcpy(response, recvBuf, sizeof(RPCMessage));
+    memcpy(response, recvBuf, sizeof(Message));
     return 0;
 }

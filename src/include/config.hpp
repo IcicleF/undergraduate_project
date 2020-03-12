@@ -84,7 +84,7 @@ class MemoryConfig
 public:
     explicit MemoryConfig(uint64_t base, uint64_t capacity);
     explicit MemoryConfig(const CmdLineConfig &conf);
-    ~MemoryConfig() = default;
+    ~MemoryConfig() { munmap((void *)base, capacity); };
 
     __always_inline void fullSync() const { msync((void *)base, capacity, MS_SYNC); }
     

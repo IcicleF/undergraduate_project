@@ -634,12 +634,17 @@ void RDMASocket::rdmaAccept(int sock)
 
     socklen_t socklen = sizeof(sockaddr);
     sockaddr_in remoteAddr;
+
+    d_info("start RDMA listening...");
+   
     while (isRunning.load()) {
         int fd = accept(sock, reinterpret_cast<sockaddr *>(&remoteAddr), &socklen);
         if (fd < 0) {
             d_err("error on accepting incoming TCP connections, stop");
             return;
         }
+
+	d_warn("discovered new peer!!!");
 
         PeerInfo peer;
         memset(&peer, 0, sizeof(PeerInfo));

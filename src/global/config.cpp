@@ -29,9 +29,9 @@ void CmdLineConfig::setAsDefault()
         return;
     }
     clusterConfigFile = strdup("cluster.conf");
-    pmemDeviceName = strdup("/dev/pmem0");
-    pmemSize = 1lu << 32;
-    ibDeviceName = strdup("ib0");
+    pmemDeviceName = strdup("/mnt/gjfs/sim0");
+    pmemSize = 1lu << 30;
+    ibDeviceName = strdup("mlx5_0");
     ibPort = 1;
 }
 

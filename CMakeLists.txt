@@ -24,6 +24,5 @@ add_executable (galois
 target_link_libraries (galois
     ${CMAKE_THREAD_LIBS_INIT}
     isal
-    pmem pmemobj pmemblk
     ibverbs
 )

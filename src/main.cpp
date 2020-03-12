@@ -18,6 +18,9 @@ int main(int argc, char **argv)
 
     srand(time(0));
 
+    d_info("start main");
+    return -1;
+
     int indexes[10005];
     uint8_t bytes[10005];
     for (int i = 0; i < 10000; ++i) {

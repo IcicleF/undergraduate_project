@@ -19,9 +19,18 @@ RDMASocket::RDMASocket()
         exit(-1);
     }
 
+    /* Listen first to make the port reusable */
+    if (rdmaListen(cmdConf->tcpPort) < 0) {
+        d_err("failed to listen incoming RDMA connections");
+        exit(-1);
+    }
+
     int nodeCount = clusterConf->getClusterSize();
     for (int i = 0; i < nodeCount; ++i) {
         NodeConfig nodeConf = (*clusterConf)[i];
+        in_addr addr;
+        addr.s_addr = nodeConf.ipAddr;
+        d_warn("trying to connect peer %d (IP: %s) ...", i, inet_ntoa(addr));
         if (nodeConf.id >= myNodeConf->id)
             continue;
         if (nodeConf.type == NODE_CLI && myNodeConf->type == NODE_CLI)
@@ -34,10 +43,6 @@ RDMASocket::RDMASocket()
             d_info("successfully connected with peer: %d", nodeConf.id);
     }
 
-    if (rdmaListen(cmdConf->tcpPort) < 0) {
-        d_err("failed to listen incoming RDMA connections");
-        exit(-1);
-    }
 
     d_info("successfully created RDMASocket!");
 }
@@ -644,7 +649,7 @@ void RDMASocket::rdmaAccept(int sock)
             return;
         }
 
-	d_warn("discovered new peer!!!");
+        d_warn("discovered new peer!!!");
 
         PeerInfo peer;
         memset(&peer, 0, sizeof(PeerInfo));

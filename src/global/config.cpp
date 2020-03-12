@@ -32,7 +32,7 @@ void CmdLineConfig::setAsDefault()
     pmemDeviceName = strdup("/mnt/gjfs/sim0");
     pmemSize = 1lu << 30;
     tcpPort = 19875;
-    ibDeviceName = strdup("mlx5_0");
+    ibDeviceName = strdup("ib0");
     ibPort = 1;
 }
 

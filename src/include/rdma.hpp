@@ -23,14 +23,13 @@ struct RDMAConnection
 
     rdma_cm_id *cmId;                   /* CM: allocated */
     ibv_qp *qp;                         /* QP: allocated */
-    ibv_cq *sendCQ;                     /* sendCQ: shared */
-    ibv_cq *recvCQ;                     /* recvCQ: shared */
-    ibv_comp_channel *compChannel;      /* Channel: shared */
 
+    ibv_mr *sendMR;                     /* Send Region MR */
+    ibv_mr *recvMR;                     /* Recv Region MR */
     ibv_mr peerMR;                      /* MR of peer */
     
-    uint8_t *sendRegion;                /* Send Region: shared */
-    uint8_t *recvRegion;                /* Recv Region: shared */
+    uint8_t *sendRegion;                /* Send Region: allocated */
+    uint8_t *recvRegion;                /* Recv Region: allocated */
 };
 
 #if 0
@@ -79,48 +78,25 @@ public:
     RDMASocket(const RDMASocket &) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;
 
-    int rdmaConnect(int peerId);
     void verboseQP(int peerId);
+    bool isPeerAlive(int peerId);
 
-    void postSend(int peerId, uint64_t localSrc, uint64_t length);
-    void postReceive(int peerId, uint64_t length);
-    void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
-    void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length);
+    void postSend(int peerId, uint32_t taskId, uint64_t length);
+    void postReceive(int peerId, uint32_t taskId, uint64_t length);
+    void postWrite(int peerId, uint32_t taskId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
+    void postRead(int peerId, uint32_t taskId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length);
 
     int pollCompletion(ibv_wc *wc);
     int pollOnce(ibv_wc *wc);
 
 private:
-    int socketExchangeData(int sock, int size, void *localData, void *remoteData);
-    int socketConnect(int peerId);
-    int createQP(PeerInfo *peer);
-    int connectQP(PeerInfo *peer);
-    int modifyQPtoInit(PeerInfo *peer);
-    int modifyQPtoRTR(PeerInfo *peer);
-    int modifyQPtoRTS(PeerInfo *peer);
-
-private:
-#if 0
-    struct
-    {
-        ibv_device_attr deviceAttr;         /* Device attributes */
-        ibv_port_attr portAttr;             /* IB port attributes */
-        ibv_context *context = nullptr;     /* device handle */
-        ibv_pd *pd = nullptr;               /* PD handle */
-        ibv_cq *cq = nullptr;               /* CQ handle */
-        ibv_mr *mr = nullptr;               /* MR handle */
-
-        PeerInfo peers[MAX_NODES];          /* Peer connections */
-    } rs;
-    std::thread rdmaListener;
-#endif
-
     void listenRDMAEvents();
     void onAddrResolved(rdma_cm_event *event);
     void onRouteResolved(rdma_cm_event *event);
     void onConnectionRequest(rdma_cm_event *event);
     void onConnectionEstablished(rdma_cm_event *event);
     void onDisconnected(rdma_cm_event *event);
+    void onCompletion(ibv_wc *wc);
 
     void buildResources(ibv_context *ctx);
     void buildConnection(rdma_cm_id *cmId);

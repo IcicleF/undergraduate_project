@@ -43,6 +43,8 @@
 #define MAX_NODES               32
 #define MAX_MDS_BAKS            3
 
+#define MAX_HOSTNAME_LEN        128
+
 #define ADDR_RESOLVE_TIMEOUT    3000
 #define MAX_REQS                16
 #define MAX_QP_DEPTH            64

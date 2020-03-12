@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 
 #include "commons.hpp"
@@ -50,7 +51,7 @@ struct NodeConfig
     int id = -1;
     std::string hostname;
     std::string ipv6AddrStr;
-    addrinfo ai;
+    addrinfo *ai;
     NodeType type;
 };
 
@@ -59,7 +60,7 @@ class ClusterConfig
 {
 public:
     explicit ClusterConfig(std::string filename);
-    ~ClusterConfig() = default;
+    ~ClusterConfig();
 
     __always_inline int getClusterSize() const { return nodeCount; }
     __always_inline int getCMId() const { return cmId; }
@@ -88,6 +89,7 @@ public:
     ~MemoryConfig() = default;
 
     __always_inline void fullSync() const { msync((void *)base, capacity, MS_SYNC); }
+    __always_inline void fullDataSync() const { msync((void *)dataArea, dataAreaCapacity, MS_SYNC); }
     
     __always_inline void *getMemory() const { return (void *)base; }
     __always_inline void *getSendBuffer(int peerId) const { return (void *)(sendBufferBase + RDMA_BUF_SIZE * peerId); }

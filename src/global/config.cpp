@@ -69,15 +69,19 @@ ClusterConfig::ClusterConfig(string filename)
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipv6AddrStr = ipv6AddrStr;
-        nodeConf[nodeId].ai = *ai;
+        nodeConf[nodeId].ai = ai;
         nodeConf[nodeId].type = NODE_DS;
         ip2id[nodeConf[nodeId].ipv6AddrStr] = nodeId;
         host2id[hostname] = nodeId;
-
-        freeaddrinfo(ai);
     }
     nodeCount = i;
     fin.close();
+}
+
+ClusterConfig::~ClusterConfig()
+{
+    for (int i = 0; i < nodeCount; ++i)
+        freeaddrinfo(nodeConf[i].ai);
 }
 
 optional<NodeConfig> ClusterConfig::findConfById(int id) const

@@ -27,7 +27,7 @@ struct Message
     } type;
 
     union {
-        ibv_mr remoteMR;
+        ibv_mr mr;
         RPCMessage rpc;
     } data;
 };

@@ -30,9 +30,9 @@ RDMASocket::RDMASocket()
         NodeConfig nodeConf = (*clusterConf)[i];
         in_addr addr;
         addr.s_addr = nodeConf.ipAddr;
-        d_warn("trying to connect peer %d (IP: %s) ...", i, inet_ntoa(addr));
         if (nodeConf.id >= myNodeConf->id)
-            continue;
+            continue; 
+        d_warn("trying to connect peer %d (IP: %s) ...", i, inet_ntoa(addr));
         if (nodeConf.type == NODE_CLI && myNodeConf->type == NODE_CLI)
             continue;
         if (rdmaConnect(nodeConf.id) < 0) {
@@ -438,7 +438,7 @@ int RDMASocket::socketExchangeData(int sock, int size, void *localData, void *re
     }
 
     if (ret < size)
-        d_err("failed to receive data during sock_sync_data");
+        d_err("failed to receive data (expected: %d bytes, actual: %d bytes) during sock_sync_data", size, ret);
     return ret;
 }
 

@@ -627,6 +627,10 @@ void RDMASocket::rdmaAccept(int sock)
         d_warn("expected peers < 0, use +inf instead");
         expectedPeers = 99999;
     }
+    if (expectedPeers == 0) {
+        listenerQuit = true;
+        return;
+    }
 
     socklen_t socklen = sizeof(sockaddr);
     sockaddr_in remoteAddr;
@@ -661,6 +665,7 @@ void RDMASocket::rdmaAccept(int sock)
         
         if (++acceptedPeers >= expectedPeers) {
             d_info("%d peers connected as expected, stop", expectedPeers);
+            listenerQuit = true;
             return;
         }
     }

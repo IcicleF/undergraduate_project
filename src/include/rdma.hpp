@@ -80,6 +80,7 @@ public:
 
     int pollCompletion(ibv_wc *wc);
     int pollOnce(ibv_wc *wc);
+    bool ready() { return listenerQuit; }
 
 private:
     int socketExchangeData(int sock, int size, void *localData, void *remoteData);
@@ -106,6 +107,7 @@ private:
         PeerInfo peers[MAX_NODES];          /* Peer connections */
     } rs;
     std::thread rdmaListener;
+    bool listenerQuit = false;              /* if true, then ready */
 };
 
 #endif // RDMA_HPP

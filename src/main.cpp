@@ -6,6 +6,8 @@
 #include <config.hpp>
 #include <ecal.hpp>
 
+#define TESTS  1
+
 int main(int argc, char **argv)
 {
     isRunning.store(true);
@@ -19,30 +21,43 @@ int main(int argc, char **argv)
     srand(time(0));
 
     d_info("start main");
-    return -1;
 
-    int indexes[10005];
-    uint8_t bytes[10005];
-    for (int i = 0; i < 10000; ++i) {
-        int index = rand() % maxIndex;
-        indexes[i] = index;
+    if (myNodeConf->id == 0) {
+        while (!ecal->ready());
 
-        ECAL::Page page(index);
-        for (int j = 0; j < Block4K::size; j++)
-            page.page.data[j] = rand() % 256;
-        bytes[i] = page.page.data[1111];
+        printf("ready! wait 2s before test...");
 
-        ecal->writeBlock(page);
+        usleep(2 * 1000 * 1000);
+
+        int indexes[TESTS + 5];
+        uint8_t bytes[TESTS + 5];
+        for (int i = 0; i < TESTS; ++i) {
+            int index = rand() % maxIndex;
+            indexes[i] = index;
+
+            ECAL::Page page(index);
+            for (int j = 0; j < Block4K::size; j++)
+                page.page.data[j] = rand() % 256;
+            bytes[i] = page.page.data[1111];
+
+            ecal->writeBlock(page);
+        }
+
+        d_info("survived write!");
+
+        int errs = 0;
+        for (int i = 0; i < TESTS; ++i) {
+            ECAL::Page page = ecal->readBlock(indexes[i]);
+            if (page.page.data[1111] != bytes[i])
+                ++errs;
+        }
+
+        d_info("survived read!");
+
+        printf("Correct: %d, Wrong: %d\n", TESTS - errs, errs);
     }
-
-    int errs = 0;
-    for (int i = 0; i < 10000; ++i) {
-        ECAL::Page page = ecal->readBlock(indexes[i]);
-        if (page.page.data[1111] != bytes[i])
-            ++errs;
-    }
-
-    printf("Correct: %d, Wrong: %d\n", 10000 - errs, errs);
+    else
+        while (1);      /* Loop forever */
 
     delete ecal;
     delete cmdConf;

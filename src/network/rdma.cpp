@@ -437,8 +437,8 @@ int RDMASocket::socketExchangeData(int sock, int size, void *localData, void *re
             ret = readBytes;
     }
 
-    if (ret < size)
-        d_err("failed to receive data (expected: %d bytes, actual: %d bytes) during sock_sync_data", size, ret);
+    if (totalBytes < size)
+        d_err("failed to receive data (expected: %d bytes, actual: %d bytes) during sock_sync_data", size, totalBytes);
     return ret;
 }
 

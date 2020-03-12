@@ -14,7 +14,6 @@
 #endif
 
 #include <arpa/inet.h>
-#include <fuse.h>
 #include <sys/mman.h>
 
 #include "common.hpp"
@@ -23,7 +22,6 @@
 struct CmdLineConfig
 {
     void setAsDefault();
-    void initFromFuseArgs(fuse_args *args);
 
 public:
     char *clusterConfigFile = NULL;     /* Cluster configuration file name */
@@ -64,11 +62,11 @@ public:
     __always_inline int getClusterSize() const { return nodeCount; }
     __always_inline int getCMId() const { return cmId; }
     __always_inline NodeConfig operator[](int index) const { return nodeConf[index]; }
-    std::optional<NodeConfig> findConfById(int id) const;
-    std::optional<NodeConfig> findConfByHostname(const std::string &hostname) const;
-    std::optional<NodeConfig> findConfByIp(in_addr_t ipAddr) const;
-    std::optional<NodeConfig> findConfByIpStr(const std::string &ipAddrStr) const;
-    std::optional<NodeConfig> findMyself() const;
+    NodeConfig findConfById(int id) const;
+    NodeConfig findConfByHostname(const std::string &hostname) const;
+    NodeConfig findConfByIp(in_addr_t ipAddr) const;
+    NodeConfig findConfByIpStr(const std::string &ipAddrStr) const;
+    NodeConfig findMyself() const;
     __always_inline std::set<int> getNodeIdSet() const { return nodeIds; }
 
 private:

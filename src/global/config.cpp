@@ -1,5 +1,6 @@
 #include <netdb.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <fstream>
 
@@ -29,29 +30,9 @@ void CmdLineConfig::setAsDefault()
     }
     clusterConfigFile = strdup("cluster.conf");
     pmemDeviceName = strdup("/dev/pmem0");
-    pmemSize = 1 << (31 - 12);                  // 2GB
+    pmemSize = 1lu << 32;
     ibDeviceName = strdup("ib0");
     ibPort = 1;
-}
-
-/* Parse arguments from a fuse_args instance */
-void CmdLineConfig::initFromFuseArgs(fuse_args *args)
-{
-    static const struct fuse_opt optionSpec[] = {
-        GALOIS_OPTION("--cluster_conf_file=%s", clusterConfigFile),
-        GALOIS_OPTION("--pmem_dev=%s", pmemDeviceName),
-        GALOIS_OPTION("--pmem_size=%lu", pmemSize),
-        GALOIS_OPTION("--tcp_port=%d", tcpPort),
-        GALOIS_OPTION("--ib_dev=%s", ibDeviceName),
-        GALOIS_OPTION("--ib_port=%d", ibPort),
-        FUSE_OPT_END
-    };
-
-    /* First initialize default values */
-    setAsDefault();
-
-    if (fuse_opt_parse(args, this, optionSpec, NULL) == -1)
-        d_err("failed to parse FUSE args");
 }
 
 // ClusterConfig part
@@ -61,7 +42,6 @@ ClusterConfig::ClusterConfig(string filename)
     int nodeId;
     string hostname;
     string ipAddrStr;
-    string nodeType;
 
     ifstream fin(filename);
     if (!fin) {
@@ -70,7 +50,7 @@ ClusterConfig::ClusterConfig(string filename)
     }
     
     int i;
-    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr >> nodeType; ++i) {
+    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr; ++i) {
         if (i >= MAX_NODES) {
             d_err("there must be no more than %d nodes", MAX_NODES);
             exit(-1);
@@ -84,59 +64,48 @@ ClusterConfig::ClusterConfig(string filename)
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddr = inet_addr(ipAddrStr.c_str());
+        nodeConf[nodeId].type = NODE_DS;
         ip2id[nodeConf[nodeId].ipAddr] = nodeId;
         host2id[hostname] = nodeId;
-
-        if (nodeType == "CM") {
-            nodeConf[nodeId].type = NODE_CM;
-            cmId = nodeId;
-        }
-        else if (nodeType == "DS")
-            nodeConf[nodeId].type = NODE_DS;
-        else if (nodeType == "CLI")
-            nodeConf[nodeId].type = NODE_CLI;
-        else {
-            d_err("unrecognized node type: %s", nodeType.c_str());
-            return;
-        }
     }
     nodeCount = i;
     fin.close();
 }
 
-optional<NodeConfig> ClusterConfig::findConfById(int id) const
+NodeConfig ClusterConfig::findConfById(int id) const
 {
     if (id >= 0 && id < nodeCount && nodeConf[id].id == id)
         return nodeConf[id];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findConfByHostname(const string &hostname) const
+NodeConfig ClusterConfig::findConfByHostname(const string &hostname) const
 {
     auto it = host2id.find(hostname);
     if (it != host2id.end())
         return nodeConf[it->second];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findConfByIp(in_addr_t ipAddr) const
+NodeConfig ClusterConfig::findConfByIp(in_addr_t ipAddr) const
 {
     auto it = ip2id.find(ipAddr);
     if (it != ip2id.end())
         return nodeConf[it->second];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findConfByIpStr(const string &ipAddrStr) const
+NodeConfig ClusterConfig::findConfByIpStr(const string &ipAddrStr) const
 {
     return findConfByIp(inet_addr(ipAddrStr.c_str()));
 }
 
-optional<NodeConfig> ClusterConfig::findMyself() const
+NodeConfig ClusterConfig::findMyself() const
 {
     static char hostname[MAX_HOSTNAME_LEN];
     gethostname(hostname, MAX_HOSTNAME_LEN);
-    return findConfByHostname(hostname);
+    hostent *hent = gethostbyname(hostname);
+    return findConfByIp(((in_addr *)hent->h_addr_list[0])->s_addr);
 }
 
 // MemoryConfig part

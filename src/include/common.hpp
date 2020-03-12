@@ -11,9 +11,6 @@
 #define COMMONS_HPP
 
 #if defined(__cplusplus)
-    #if (__cplusplus < 201703L)
-    #error compile this program in C++17 environment!
-    #endif
 #else
 #error use C++ compiler!
 #endif
@@ -36,7 +33,6 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
-#include <optional>
 
 #define MAX_NODES               32
 #define MAX_MDS_BAKS            3

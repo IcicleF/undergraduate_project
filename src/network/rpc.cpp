@@ -16,12 +16,11 @@ RPCInterface::RPCInterface() : taskId(1)
         clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
         
         auto _myself = clusterConf->findMyself();
-        if (_myself.has_value())
-            myNodeConf = new NodeConfig(_myself.value());
-        else {
-            d_err("cannot find configuration of this node");
-            exit(-1);
-        }
+        myNodeConf = new NodeConfig(_myself);
+        
+        in_addr addr;
+        addr.s_addr = myNodeConf->ipAddr;
+        d_info("my IP is: %s", inet_ntoa(addr));
     }
 
     auto idSet = clusterConf->getNodeIdSet();

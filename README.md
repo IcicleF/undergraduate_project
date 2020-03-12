@@ -4,6 +4,8 @@
 
 My graduation project.
 
+**THIS BRANCH IS FOR PERFORMANCE TEST ONLY**
+
 ## Compilation
 
 Requires:

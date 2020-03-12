@@ -445,12 +445,7 @@ int RDMASocket::socketExchangeData(int sock, int size, void *localData, void *re
  */
 int RDMASocket::socketConnect(int peerId)
 {
-    auto _peerConf = clusterConf->findConfById(peerId);
-    if (!_peerConf.has_value()) {
-        d_err("cannot find node configuration for peer: %d", peerId);
-        return -1;
-    }
-    auto peerConf = _peerConf.value();
+    auto peerConf = clusterConf->findConfById(peerId);
 
     sockaddr_in remote_addr;
     timeval timeout = {

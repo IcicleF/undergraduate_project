@@ -2,11 +2,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <chrono>
 
 #include <config.hpp>
 #include <ecal.hpp>
 
-#define TESTS  1
+#define TESTS  1000
+
+using namespace std;
+using std::chrono::microseconds;
 
 int main(int argc, char **argv)
 {
@@ -23,11 +27,15 @@ int main(int argc, char **argv)
     d_info("start main");
 
     if (myNodeConf->id == 0) {
+	d_warn("start waiting...");
+    
         while (!ecal->ready());
 
-        printf("ready! wait 2s before test...");
+        printf("ready! wait 2s before test...\n");
 
         usleep(2 * 1000 * 1000);
+
+	long readus = 0, writeus = 0;
 
         int indexes[TESTS + 5];
         uint8_t bytes[TESTS + 5];
@@ -40,21 +48,30 @@ int main(int argc, char **argv)
                 page.page.data[j] = rand() % 256;
             bytes[i] = page.page.data[1111];
 
+	    auto start = chrono::steady_clock::now();
             ecal->writeBlock(page);
-        }
+	    auto end = chrono::steady_clock::now();
+	    writeus += chrono::duration_cast<microseconds>(end-start).count();
+            usleep(1000);
+	}
 
         d_info("survived write!");
 
         int errs = 0;
         for (int i = 0; i < TESTS; ++i) {
-            ECAL::Page page = ecal->readBlock(indexes[i]);
-            if (page.page.data[1111] != bytes[i])
+            auto start = chrono::steady_clock::now();
+	    ECAL::Page page = ecal->readBlock(indexes[i]);
+            auto end = chrono::steady_clock::now();
+	    readus += chrono::duration_cast<microseconds>(end-start).count();
+
+	    if (page.page.data[1111] != bytes[i])
                 ++errs;
         }
 
         d_info("survived read!");
 
         printf("Correct: %d, Wrong: %d\n", TESTS - errs, errs);
+	printf("Read: %.3lf us, Write: %.3lf us\n", (double)readus / TESTS, (double)writeus / TESTS);
     }
     else
         while (1);      /* Loop forever */

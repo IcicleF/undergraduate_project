@@ -708,7 +708,6 @@ int RDMASocket::rdmaListen(int port)
 
     listen(sock, MAX_QUEUED_CONNS);
     rdmaListener = std::thread(&RDMASocket::rdmaAccept, this, sock);
-    rdmaListener.detach();
 
     return 0;
 }

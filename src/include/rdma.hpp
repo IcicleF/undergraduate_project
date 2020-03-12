@@ -80,7 +80,7 @@ public:
 
     int pollCompletion(ibv_wc *wc);
     int pollOnce(ibv_wc *wc);
-    bool ready() { return listenerQuit; }
+    bool ready() { rdmaListener.join(); return true; }
 
 private:
     int socketExchangeData(int sock, int size, void *localData, void *remoteData);

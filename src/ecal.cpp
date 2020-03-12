@@ -48,6 +48,7 @@ ECAL::~ECAL()
 ECAL::Page ECAL::readBlock(uint64_t index)
 {
     static BlockTy readBuffer[K];
+    static BlockTy decodeBuffer[N];
     static int decodeIndex[K], errIndex[K];
 
     Page res(index);
@@ -99,8 +100,10 @@ ECAL::Page ECAL::readBlock(uint64_t index)
         
         uint8_t *recoverSrc[N];
         uint8_t *recoverOutput[N];
-        for (int i = 0; i < K; ++i)
+        for (int i = 0; i < K; ++i) {
             recoverSrc[i] = readBuffer[i].data;
+	    recoverOutput[i] = decodeBuffer[i].data;
+	}
         
         uint8_t gfTbls[K * P * 32];
         ec_init_tables(K, errs, decodeMatrix, gfTbls);

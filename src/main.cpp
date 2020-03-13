@@ -12,8 +12,8 @@
 using namespace std;
 using std::chrono::microseconds;
 
-long rdmaus = 0;
-long isalus = 0;
+long wrdmaus = 0, rrdmaus = 0;
+long wisalus = 0, risalus = 0;
 
 int main(int argc, char **argv)
 {
@@ -75,6 +75,10 @@ int main(int argc, char **argv)
 
         printf("Correct: %d, Wrong: %d\n", TESTS - errs, errs);
         printf("Read: %.3lf us, Write: %.3lf us\n", (double)readus / TESTS, (double)writeus / TESTS);
+        
+        printf("R: EC: %.3lf us, RDMA: %.3lfus\n", (double)risalus / TESTS, (double)rrdmaus / TESTS);
+        printf("W: EC: %.3lf us, RDMA: %.3lfus\n", (double)wisalus / TESTS, (double)wrdmaus / TESTS);
+        
         fflush(stdout);
 
         usleep(1000 * 1000);

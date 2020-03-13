@@ -50,6 +50,9 @@ ECAL::~ECAL()
     }
 }
 
+extern long wrdmaus, rrdmaus;
+extern long wisalus, risalus;
+
 ECAL::Page ECAL::readBlock(uint64_t index)
 {
     static BlockTy readBuffer[K];
@@ -71,9 +74,11 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     uint64_t blockShift = getBlockShift(pos.row);
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
-            auto start =
+            auto start = steady_clock::now();
             int ret = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
                     (uint64_t)(readBuffer + i), BlockTy::size);
+            auto end = steady_clock::now();
+            rrdmaus += duration_cast<microseconds>(end - start).count();
             if (ret < 0) {
                 d_err("failed to RDMA read from peer: %d, block set to zero", decodeIndex[i]);
                 memset(readBuffer + i, 0, BlockTy::size);
@@ -90,6 +95,8 @@ ECAL::Page ECAL::readBlock(uint64_t index)
         uint8_t decodeMatrix[N * K];
         uint8_t invertMatrix[N * K];
         uint8_t b[K * K];
+
+        auto start = steady_clock::now();
 
         for (int i = 0; i < K; ++i)
             decodeIndex[i] -= pos.startNodeId;
@@ -108,12 +115,15 @@ ECAL::Page ECAL::readBlock(uint64_t index)
         uint8_t *recoverOutput[N];
         for (int i = 0; i < K; ++i) {
             recoverSrc[i] = readBuffer[i].data;
-	    recoverOutput[i] = decodeBuffer[i].data;
-	}
+            recoverOutput[i] = decodeBuffer[i].data;
+        }
         
         uint8_t gfTbls[K * P * 32];
         ec_init_tables(K, errs, decodeMatrix, gfTbls);
         ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
+
+        auto end = steady_clock::now();
+        risalus += duration_cast<microseconds>(end - start).count();
 
         for (int i = 0; i < K; ++i)
             if (decodeIndex[i] < K)
@@ -131,7 +141,11 @@ void ECAL::writeBlock(ECAL::Page page)
     
     for (int i = 0; i < K; ++i)
         data[i] = page.page.data + i * BlockTy::size;
+    
+    auto start = steady_clock::now();
     ec_encode_data(BlockTy::size, K, P, gfTables, data, parity);
+    auto end = steady_clock::now();
+    wisalus += duration_cast<microseconds>(end - start).count();
 
     DataPosition pos = getDataPos(page.index);
     uint64_t blockShift = getBlockShift(pos.row);
@@ -142,8 +156,11 @@ void ECAL::writeBlock(ECAL::Page page)
         if (nodeId == myNodeConf->id)
             memcpy(allocTable->at(pos.row), blk, BlockTy::capacity);
         else {
+            start = steady_clock::now();
             int ret = rpcInterface->remoteWriteTo(nodeId, blockShift,
                     (uint64_t)blk, BlockTy::capacity);
+            end = steady_clock::now();
+            wrdmaus += duration_cast<microseconds>(end - start).count();
             if (ret < 0) {
                 d_err("failed to RDMA write to peer: %d", nodeId);
             }

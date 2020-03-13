@@ -12,6 +12,9 @@
 using namespace std;
 using std::chrono::microseconds;
 
+long rdmaus = 0;
+long isalus = 0;
+
 int main(int argc, char **argv)
 {
     isRunning.store(true);
@@ -27,7 +30,7 @@ int main(int argc, char **argv)
     d_info("start main");
 
     if (myNodeConf->id == 0) {
-	d_warn("start waiting...");
+        d_warn("start waiting...");
     
         while (!ecal->ready());
 
@@ -35,7 +38,7 @@ int main(int argc, char **argv)
 
         usleep(2 * 1000 * 1000);
 
-	long readus = 0, writeus = 0;
+        long readus = 0, writeus = 0;
 
         int indexes[TESTS + 5];
         uint8_t bytes[TESTS + 5];
@@ -48,33 +51,37 @@ int main(int argc, char **argv)
                 page.page.data[j] = rand() % 256;
             bytes[i] = page.page.data[1111];
 
-	    auto start = chrono::steady_clock::now();
+            auto start = chrono::steady_clock::now();
             ecal->writeBlock(page);
-	    auto end = chrono::steady_clock::now();
-	    writeus += chrono::duration_cast<microseconds>(end-start).count();
+            auto end = chrono::steady_clock::now();
+            writeus += chrono::duration_cast<microseconds>(end-start).count();
             usleep(1000);
-	}
+        }
 
         d_info("survived write!");
 
         int errs = 0;
         for (int i = 0; i < TESTS; ++i) {
             auto start = chrono::steady_clock::now();
-	    ECAL::Page page = ecal->readBlock(indexes[i]);
+            ECAL::Page page = ecal->readBlock(indexes[i]);
             auto end = chrono::steady_clock::now();
-	    readus += chrono::duration_cast<microseconds>(end-start).count();
+            readus += chrono::duration_cast<microseconds>(end-start).count();
 
-	    if (page.page.data[1111] != bytes[i])
+            if (page.page.data[1111] != bytes[i])
                 ++errs;
         }
 
         d_info("survived read!");
 
         printf("Correct: %d, Wrong: %d\n", TESTS - errs, errs);
-	printf("Read: %.3lf us, Write: %.3lf us\n", (double)readus / TESTS, (double)writeus / TESTS);
+        printf("Read: %.3lf us, Write: %.3lf us\n", (double)readus / TESTS, (double)writeus / TESTS);
+        fflush(stdout);
+
+        usleep(1000 * 1000);
     }
-    else
-        while (1);      /* Loop forever */
+
+    ecal->stop();           /* Synchronously stop */
+    usleep(1000 * 1000);
 
     delete ecal;
     delete cmdConf;

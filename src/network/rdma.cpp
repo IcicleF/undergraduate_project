@@ -433,8 +433,11 @@ int RDMASocket::socketExchangeData(int sock, int size, void *localData, void *re
         readBytes = read(sock, reinterpret_cast<void *>(startPos), size);
         if (readBytes > 0)
             totalBytes += readBytes;
-        else
+        else {
+            d_warn("remote has closed the socket.");
             ret = readBytes;
+            break;
+        }
     }
 
     if (totalBytes < size)
@@ -454,7 +457,7 @@ int RDMASocket::socketConnect(int peerId)
 
     sockaddr_in remote_addr;
     timeval timeout = {
-        .tv_sec = 3,
+        .tv_sec = 60,                       /* Wait long enough for sync stop */
         .tv_usec = 0
     };
 

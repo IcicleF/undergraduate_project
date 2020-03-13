@@ -1,5 +1,10 @@
+#include <chrono>
+
 #include <ecal.hpp>
 #include <debug.hpp>
+
+using namespace std;
+using namespace std::chrono;
 
 /*
  * Constructor initializes `memConf`.
@@ -66,6 +71,7 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     uint64_t blockShift = getBlockShift(pos.row);
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
+            auto start =
             int ret = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
                     (uint64_t)(readBuffer + i), BlockTy::size);
             if (ret < 0) {

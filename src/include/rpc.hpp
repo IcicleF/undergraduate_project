@@ -20,6 +20,7 @@ public:
     ~RPCInterface();
 
     bool ready() { return socket->ready(); }
+    void stop() { return socket->stop(); }
     void __markAsAlive(int peerId) { peerIsAlive[peerId] = true; }
     void __markAsDead(int peerId) { peerIsAlive[peerId] = false; }
     bool isAlive(int peerId) { return peerIsAlive[peerId]; }

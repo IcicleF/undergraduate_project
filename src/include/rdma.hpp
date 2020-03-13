@@ -13,6 +13,7 @@
 #include <netdb.h>
 
 #include "config.hpp"
+#include "debug.hpp"
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define htonll(x) bswap_64((uint64_t)(x))
@@ -81,6 +82,20 @@ public:
     int pollCompletion(ibv_wc *wc);
     int pollOnce(ibv_wc *wc);
     bool ready() { rdmaListener.join(); return true; }
+    void stop()
+    {
+        char buf[] = "STOP", remote[10];
+        for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+            if (i == myNodeConf->id)
+                continue;
+            socketExchangeData(rs.peers[i].sock, 4, buf, remote);
+            if (strncmp(buf, remote, 4) != 0)
+                d_err("TAT: %d", i);
+            else
+                d_info("stopped: %d", i);
+        }
+        d_info("successfully sync stopped RDMASocket");
+    }
 
 private:
     int socketExchangeData(int sock, int size, void *localData, void *remoteData);

@@ -41,6 +41,7 @@ public:
     ~ECAL();
     
     bool ready() { return rpcInterface->ready(); }
+    void stop() { rpcInterface->stop(); }
     Page readBlock(uint64_t index);
     void writeBlock(Page page);
 

@@ -10,11 +10,7 @@
 #if !defined(COMMONS_HPP)
 #define COMMONS_HPP
 
-#if defined(__cplusplus)
-    #if (__cplusplus < 201703L)
-    #error compile this program in C++17 environment!
-    #endif
-#else
+#if !defined(__cplusplus)
 #error use C++ compiler!
 #endif
 

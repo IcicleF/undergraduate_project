@@ -7,6 +7,10 @@
 #include <debug.hpp>
 #include <rdma.hpp>
 
+#define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))
+#define WRID_PEER(id)   ((int)(((id) >> 32) & 0xFFFFFFFF))
+#define WRID_TASK(id)   ((uint32_t)((id) & 0xFFFFFFFF))
+
 RDMASocket::RDMASocket()
 {
     if (!cmdConf || !clusterConf || !memConf || !myNodeConf) {
@@ -83,11 +87,18 @@ RDMASocket::~RDMASocket()
         rdma_destroy_event_channel(ec);
 }
 
+
+/* Register a hash table to record CQ completion information. */
+void RDMASocket::registerHashTable(HashTable *hashTable)
+{
+    this->hashTable = hashTable;
+}
+
 /* This function is expected to run as a single thread. */
 void RDMASocket::listenRDMAEvents()
 {
     typedef void (RDMASocket:: *EventHandler)(rdma_cm_event *);
-    static EventHandler handlers[] = {
+    static constexpr EventHandler handlers[] = {
         [RDMA_CM_EVENT_ADDR_RESOLVED] = &onAddrResolved,
         [RDMA_CM_EVENT_ROUTE_RESOLVED] = &onRouteResolved,
         [RDMA_CM_EVENT_CONNECT_REQUEST] = &onConnectionRequest,
@@ -141,7 +152,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
     auto *mrMsg = reinterpret_cast<Message *>(peer->sendRegion);
     mrMsg->type = Message::MESG_REMOTE_MR;
     memcpy(mr, &mrMsg->data.mr, sizeof(ibv_mr));
-    postSend(peer->peerId, sizeof(Message));
+    postSend(peer->peerId, sizeof(Message), SP_REMOTE_MR_SEND);
 }
 
 /* As a server or client, handle when a connection is lost */
@@ -152,27 +163,54 @@ void RDMASocket::onDisconnected(rdma_cm_event *event)
 
 void RDMASocket::onCompletion(ibv_wc *wc)
 {
-    int peerId = wc->wr_id >> 32;
-    uint32_t taskId = wc->wr_id & 0xFFFFFFFF;
+    static constexpr ibv_wc_opcode type2opcode[] = {
+        [HashTableEntry::HTE_SEND_REQ] = IBV_WC_SEND,
+        [HashTableEntry::HTE_RECV_REQ] = IBV_WC_RECV_RDMA_WITH_IMM,     /* send always with imm */
+        [HashTableEntry::HTE_READ_REQ] = IBV_WC_RDMA_READ,
+        [HashTableEntry::HTE_WRITE_REQ] = IBV_WC_RDMA_WRITE
+    };
+    static constexpr const char *opcode2str[] = {
+        [IBV_WC_SEND] = "SEND",
+        [IBV_WC_RECV] = "RECV",
+        [IBV_WC_RDMA_READ] = "RDMA_READ",
+        [IBV_WC_RDMA_WRITE] = "RDMA_WRITE"
+    };
+    int peerId = WRID_PEER(wc->wr_id);
+    uint32_t taskId = WRID_TASK(wc->wr_id);
 
     RDMAConnection *peer = peers + peerId;
     if (wc->status != IBV_WC_SUCCESS) {
-        d_err("wc failed (peer: %d, err: %d)", peer->peerId, (int)wc->status);
+        d_err("wc failed (peer: %d, op: %s, err: %d)",
+                peer->peerId, opcode2str[wc->opcode], (int)wc->status);
         return;
     }
 
-    if (wc->opcode & IBV_WC_RECV) {
-        /* Handle remote MR */
+    /* Perform redundancy check */
+    if (taskId >= SP_TYPES)
+        expectTrue(wc->opcode == type2opcode[(*hashTable)[taskId].type]);
+
+    /* Received remote MR */
+    if ((wc->opcode & IBV_WC_RECV) && taskId == SP_REMOTE_MR_RECV) {
         auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
         if (msg->type == Message::MESG_REMOTE_MR) {
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
-            peer->connected = true;
-            return;
+            peer->connected = true;    
+            d_info("successfully connected with peer: %d", peerId);
         }
-        
+        else
+            d_err("RDMA recv intended for MR received some other thing");
+        return;
     }
 
-    // TODO: use hash table to record completion
+    /* RDMA write is not polled by user, process here */
+    if (wc->opcode == IBV_WC_RDMA_WRITE) {
+        hashTable->freeID(taskId);
+        return;
+    }
+
+    /* Store the data in hash table for user polling */
+    (*hashTable)[taskId].complete = true;
+    (*hashTable)[taskId].imm = wc->imm_data;
 }
 
 void RDMASocket::buildResources(ibv_context *ctx)
@@ -229,7 +267,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
-    postReceive(peerId, RDMA_BUF_SIZE);
+    postReceive(peerId, 0, SP_REMOTE_MR_RECV);
 }
 
 void RDMASocket::buildConnParam(rdma_conn_param *param)
@@ -304,11 +342,14 @@ bool RDMASocket::isPeerAlive(int peerId)
     return peers[peerId].connected;
 }
 
-/* Issue a send request to the designated peer. */
-void RDMASocket::postSend(int peerId, uint32_t taskId, uint64_t length)
+/* Issue a send request to the designated peer, and return a unique task ID. */
+uint32_t RDMASocket::postSend(int peerId, uint64_t length, int specialTaskId)
 {
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
+    uint32_t taskId = (specialTaskId < 0 ?
+                       hashTable->allocID(HashTableEntry::HTE_SEND_REQ) :
+                       specialTaskId);
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = ((uint64_t)(peers[peerId].sendRegion));
@@ -316,7 +357,7 @@ void RDMASocket::postSend(int peerId, uint32_t taskId, uint64_t length)
     sge.lkey = mr->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
-    wr.wr_id = ((uint64_t)peerId) << 32 | taskId;
+    wr.wr_id = WRID(peerId, taskId);
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.imm_data = myNodeConf->id;
@@ -324,12 +365,17 @@ void RDMASocket::postSend(int peerId, uint32_t taskId, uint64_t length)
     wr.send_flags = IBV_SEND_SIGNALED;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
+    return taskId;
 }
 
-void RDMASocket::postReceive(int peerId, uint32_t taskId, uint64_t length)
+/* Issue a receive request to the designated peer, and return a unique task ID. */
+uint32_t RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
 {
     ibv_recv_wr wr, *badWr = nullptr;
     ibv_sge sge;
+    uint32_t taskId = (specialTaskId < 0 ?
+                       hashTable->allocID(HashTableEntry::HTE_RECV_REQ) :
+                       specialTaskId);
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = (uint64_t)(peers[peerId].recvRegion);
@@ -337,18 +383,24 @@ void RDMASocket::postReceive(int peerId, uint32_t taskId, uint64_t length)
     sge.lkey = mr->lkey;
 
     memset(&wr, 0, sizeof(ibv_recv_wr));
-    wr.wr_id = ((uint64_t)peerId) << 32 | taskId;
+    wr.wr_id = WRID(peerId, taskId);
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.next = nullptr;
 
     expectZero(ibv_post_recv(peers[peerId].qp, &wr, &badWr));
+    return taskId;
 }
 
-void RDMASocket::postWrite(int peerId, uint32_t taskId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm)
+/* Issue a write request to the designated peer, and return a unique task ID. */
+uint32_t RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
+                               uint64_t length, int imm, int specialTaskId)
 {
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
+    uint32_t taskId = (specialTaskId < 0 ?
+                       hashTable->allocID(HashTableEntry::HTE_WRITE_REQ) :
+                       specialTaskId);
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localSrc;
@@ -356,7 +408,7 @@ void RDMASocket::postWrite(int peerId, uint32_t taskId, uint64_t remoteDstShift,
     sge.lkey = mr->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
-    wr.wr_id = ((uint64_t)peerId) << 32 | taskId;
+    wr.wr_id = WRID(peerId, taskId);
     wr.sg_list = &sge;
     wr.num_sge = 1;
     if (imm == -1)
@@ -370,17 +422,18 @@ void RDMASocket::postWrite(int peerId, uint32_t taskId, uint64_t remoteDstShift,
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
+    return taskId;
 }
 
-/*
- * Issue a read request from the designated peer.
- * Users should pass in a remote "address shift", since this function will add it
- * to the base address.
- */
-void RDMASocket::postRead(int peerId, uint32_t taskId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
+/* Issue a read request from the designated peer, and return a unique task ID. */
+uint32_t RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, 
+                              uint64_t length, int specialTaskId)
 {
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
+    uint32_t taskId = (specialTaskId < 0 ?
+                       hashTable->allocID(HashTableEntry::HTE_READ_REQ) :
+                       specialTaskId);
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localDst;
@@ -388,7 +441,7 @@ void RDMASocket::postRead(int peerId, uint32_t taskId, uint64_t remoteSrcShift, 
     sge.lkey = mr->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
-    wr.wr_id = ((uint64_t)peerId) << 32 | taskId;
+    wr.wr_id = WRID(peerId, taskId);
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_RDMA_READ;
@@ -397,4 +450,5 @@ void RDMASocket::postRead(int peerId, uint32_t taskId, uint64_t remoteSrcShift, 
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
+    return taskId;
 }

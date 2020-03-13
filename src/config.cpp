@@ -133,7 +133,7 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
 
     fd = open(conf.pmemDeviceName.c_str(), O_RDWR);
     if (fd < 0) {
-        d_err("cannot open pmem device: %s", conf.pmemDeviceName);
+        d_err("cannot open pmem device: %s", conf.pmemDeviceName.c_str());
         exit(-1);
     }
 

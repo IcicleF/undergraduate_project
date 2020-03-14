@@ -4,44 +4,39 @@
 /*
  * Constructor initializes `clusterConf` and `myNodeConf`.
  */
-RPCInterface::RPCInterface() : taskId(1)
+RPCInterface::RPCInterface()
 {
     if (cmdConf == nullptr || memConf == nullptr) {
         d_err("cmdConf & memConf should be initialized!");
         exit(-1);
     }
+
     if (clusterConf != nullptr || myNodeConf != nullptr)
-        d_warn("clusterConf & myNodeConf are already initialized, skip");
+        d_warn("clusterConf & myNodeConf were already initialized, skip");
     else {
         clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
         
-        auto _myself = clusterConf->findMyself();
-        if (_myself.has_value())
-            myNodeConf = new NodeConfig(_myself.value());
+        auto myself = clusterConf->findMyself();
+        if (myself.id >= 0)
+            myNodeConf = new NodeConfig(myself);
         else {
             d_err("cannot find configuration of this node");
             exit(-1);
         }
     }
 
-    auto idSet = clusterConf->getNodeIdSet();
-    for (int id : idSet)
-        peerIsAlive[id] = true;                 /* FIXME?: Assume true at start */
-
+    memset(peerAliveStatus, 0, sizeof(peerAliveStatus));
     socket = new RDMASocket();
+    hashTable = new HashTable();
+    socket->registerHashTable(hashTable);
 
+    shouldRun = true;
     rpcListener = std::thread(&RPCInterface::rpcListen, this);
-    rpcListener.detach();
 }
 
-/*
- * Destructor deallocates `clusterConf` and `myNodeConf`.
- */
+/* Destructor deallocates `clusterConf` and `myNodeConf`. */
 RPCInterface::~RPCInterface()
 {
-    delete socket;
-    socket = nullptr;
-
     if (cmdConf) {
         delete cmdConf;
         cmdConf = nullptr;
@@ -50,95 +45,43 @@ RPCInterface::~RPCInterface()
         delete myNodeConf;
         myNodeConf = nullptr;
     }
+
+    delete socket;
+    delete hashTable;
+}
+
+/*
+ * Retrieve peer liveness data from RDMA socket.
+ * Users can "regard" a peer as alive/dead by __markAsAlive and __markAsDead,
+ * and cancel this by __cancelMarking. 
+ */
+bool RPCInterface::isPeerAlive(int peerId)
+{
+    if (short res = peerAliveStatus[peerId])
+        return res > 0;
+    return socket->isPeerAlive(peerId);
+}
+
+/* Stops RPCInterface listener threads and the underlying RDMASocket. */
+void RPCInterface::stopAndJoin()
+{
+    if (std::this_thread::get_id() != mainThreadId) {
+        d_err("cannot stopAndJoin from non-main threads");
+        return;
+    }
+    if (!shouldRun)
+        return;
+    
+    shouldRun = false;
+    if (rpcListener.joinable())
+        rpcListener.join();
+    
+    d_info("all joinable listener threads have joined");
+    d_info("now, try to stop RDMASocket...");
+    socket->stopAndJoin();
 }
 
 void RPCInterface::rpcListen()
 {
-    ibv_wc wc;
-    while (isRunning.load()) {
-        int ret = socket->pollCompletion(&wc);
-        if (ret < 0) {
-            d_err("failed to poll CQ, stop");
-            return;
-        }
-
-        if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
-            int peerId = wc.imm_data;
-            auto *message = reinterpret_cast<Message *>(memConf->getReceiveBuffer(peerId));
-            auto *response = reinterpret_cast<Message *>(memConf->getSendBuffer(peerId));
-            if (rpcProcessCall(peerId, message, response) < 0) {
-                d_err("cannot process RPC request from peer: %d, stop", peerId);
-                return;
-            }
-            
-            /* Repost RDMA receive before responding for maybe better performance */
-            socket->postReceive(peerId, 0);
-
-            /* Use RDMA write to send reply. TO BE EXAMINED */
-            if (socket->postWrite(peerId, memConf->getReceiveBufferShift(myNodeConf->id),
-                    (uint64_t)response, sizeof(Message), myNodeConf->id) < 0) {
-                d_err("cannot write reply to peer: %d, stop", peerId);
-                return;
-            }
-        }
-        else
-            d_warn("unknown opcode: %d, ignore", (int)wc.opcode);
-    }
-}
-
-int RPCInterface::rpcProcessCall(int peerId, const Message *message, Message *response)
-{
-    memset(response, 0, sizeof(Message));
-    switch (message->type) {
-        case RPC_ALLOC: {
-            //uint64_t ret = remoteAllocBlock(peerId);
-            uint64_t ret = 0;
-            if (ret < 0) {
-                d_warn("cannot alloc block for peer: %d", peerId);
-                response->type = RPC_RESPONSE_NAK;
-            }
-            else {
-                response->type = RPC_RESPONSE_ACK;
-                response->addr = ret;
-                response->count = 1;
-            }
-            return 0;
-        }
-        case RPC_DEALLOC: {
-            //int ret = remoteDeallocBlock(peerId, message->addr);
-            int ret = 0;
-            if (ret < 0) {
-                d_err("failed to dealloc block for peer: %d", peerId);
-                response->type = RPC_RESPONSE_NAK;
-            }
-            else
-                response->type = RPC_RESPONSE_ACK;
-            return 0;
-        }
-        default:
-            break;
-    }
-    return -1;
-}
-
-int RPCInterface::remoteRPCCall(int peerId, const Message *request, Message *response)
-{
-    auto *sendBuf = reinterpret_cast<Message *>(memConf->getSendBuffer(peerId));
-    memcpy(sendBuf, request, sizeof(Message));
-
-    sendBuf->uid = taskId.fetch_add(1);
-    __mem_clflush(sendBuf);
-
-    auto *recvBuf = reinterpret_cast<Message *>(memConf->getReceiveBuffer(peerId));
-    recvBuf->type = 0;
-    __mem_clflush(recvBuf);
-
-    if (socket->postSend(peerId, (uint64_t)sendBuf, sizeof(Message)) < 0) {
-        d_err("cannot send RPC call via RDMA (to peer: %d)", peerId);
-        return -1;
-    }
     
-    while ((recvBuf->type & RPC_RESPONSE) == 0);
-    memcpy(response, recvBuf, sizeof(Message));
-    return 0;
 }

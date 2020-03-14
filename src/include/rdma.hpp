@@ -1,3 +1,12 @@
+/*
+ * rdma.hpp
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * Defines an RDMA interface to support RDMA send/recv/write/read primitives.
+ * It hides RDMA details from users and notify user WR results with a hash table. 
+ */
+
 #if !defined(RDMA_HPP)
 #define RDMA_HPP
 
@@ -56,9 +65,9 @@ public:
     RDMASocket &operator=(const RDMASocket &) = delete;
 
     void registerHashTable(HashTable *hashTable);
-
     void verboseQP(int peerId);
     bool isPeerAlive(int peerId);
+    void stopAndJoin();
 
     uint32_t postSend(int peerId, uint64_t length, int specialTaskId = -1);
     uint32_t postReceive(int peerId, uint64_t length, int specialTaskId = -1);
@@ -103,7 +112,7 @@ private:
     std::map<uint64_t, int> cm2id;          /* Map rdma_cm_id pointer to peer */
     uint32_t nodeIDBuf;                     /* Send my node ID on connection */
 
-    bool shouldRun;
+    bool shouldRun;                         /* Stop threads if false */
 };
 
 #endif // RDMA_HPP

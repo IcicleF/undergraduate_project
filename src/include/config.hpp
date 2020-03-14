@@ -3,7 +3,7 @@
  * 
  * Copyright (c) 2020 Storage Research Group, Tsinghua University
  * 
- * Define all configuration structures and necessary functions to process them.
+ * Define all configuration classes.
  */
 
 #if !defined(CONFIG_HPP)
@@ -29,7 +29,7 @@ struct CmdLineConfig
     std::string clusterConfigFile;      /* Cluster configuration file name */
     std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
     uint64_t pmemSize;                  /* Data pool size in blocks */
-    std::string ipv6PortStr;            /* IPv6 port (string) to establish connections */
+    std::string ipPortStr;              /* IP port (string) to establish connections */
     std::string ibDeviceName;           /* InfiniBand device name (e.g. ib0) */
     int ibPort;                         /* InfiniBand port */
 };
@@ -50,7 +50,7 @@ struct NodeConfig
 {
     int id = -1;
     std::string hostname;
-    std::string ipv6AddrStr;
+    std::string ipAddrStr;
     addrinfo *ai;
     NodeType type;
 };
@@ -65,16 +65,16 @@ public:
     __always_inline int getClusterSize() const { return nodeCount; }
     __always_inline int getCMId() const { return cmId; }
     __always_inline NodeConfig operator[](int index) const { return nodeConf[index]; }
-    std::optional<NodeConfig> findConfById(int id) const;
-    std::optional<NodeConfig> findConfByHostname(const std::string &hostname) const;
-    std::optional<NodeConfig> findConfByIPv6Str(const std::string &ipv6AddrStr) const;
-    std::optional<NodeConfig> findMyself() const;
+    NodeConfig findConfById(int id) const;
+    NodeConfig findConfByHostname(const std::string &hostname) const;
+    NodeConfig findConfByIPStr(const std::string &ipAddrStr) const;
+    NodeConfig findMyself() const;
     __always_inline std::set<int> getNodeIdSet() const { return nodeIds; }
 
 private:
     NodeConfig nodeConf[MAX_NODES];
     std::set<int> nodeIds;
-    std::unordered_map<std::string, int> ip2id;         /* IPv6 address string to nodeId */
+    std::unordered_map<std::string, int> ip2id;         /* IP address string to nodeId */
     std::unordered_map<std::string, int> host2id;       /* Hostname to nodeId */
     int nodeCount;
     int cmId;

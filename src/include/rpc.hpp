@@ -19,28 +19,28 @@ public:
     explicit RPCInterface();
     ~RPCInterface();
 
-    void __markAsAlive(int peerId) { peerIsAlive[peerId] = 1; }
-    void __markAsDead(int peerId) { peerIsAlive[peerId] = -1; }
-    void __markAsNatural(int peerId) { peerIsAlive[peerId] = 0; }
-    bool isAlive(int peerId)
+    __always_inline void __markAsAlive(int peerId) { peerAliveStatus[peerId] = 1; }
+    __always_inline void __markAsDead(int peerId) { peerAliveStatus[peerId] = -1; }
+    __always_inline void __cancelMarking(int peerId) { peerAliveStatus[peerId] = 0; }
+
+    bool isPeerAlive(int peerId);
+    void stopAndJoin();
+
+    __always_inline
+    uint32_t remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst,
+                            uint64_t length, int specialTaskId = -1)
     {
-        if (short res = peerIsAlive[peerId])
-            return res > 0;
-        return socket->isPeerAlive(peerId);
+        return socket->postRead(peerId, remoteSrcShift, localDst, length, specialTaskId);
+    }
+    __always_inline
+    uint32_t remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
+                           uint64_t length, int imm = -1, int specialTaskId = -1)
+    {
+        return socket->postWrite(peerId, remoteDstShift, localSrc, length, imm, specialTaskId);
     }
 
-    int remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
-    {
-        if (socket)
-            return socket->postRead(peerId, remoteSrcShift, localDst, length);
-        return -1;
-    }
-    int remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
-    {
-        if (socket)
-            return socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
-        return -1;
-    }
+    __always_inline HashTable *getHashTable() { return hashTable; }
+    
     
     void rpcListen();
     int rpcProcessCall(int peerId, const Message *message, Message *response);
@@ -50,9 +50,12 @@ public:
 
 private:
     RDMASocket *socket = nullptr;
-    HashTable *hashTable = nullptr;
+    std::thread rpcListener;
 
-    std::unordered_map<int, short> peerIsAlive;
+    HashTable *hashTable = nullptr;
+    short peerAliveStatus[MAX_NODES];
+
+    bool shouldRun;
 };
 
 #endif // RPC_HPP

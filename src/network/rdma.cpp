@@ -21,9 +21,9 @@ RDMASocket::RDMASocket()
     shouldRun = true;
     nodeIDBuf = myNodeConf->id;
 
-    sockaddr_in6 addr;
+    sockaddr_in addr;
     memset(&addr, 0, sizeof(sockaddr));
-    addr.sin6_family = AF_INET6;
+    addr.sin_family = AF_INET;
 
     for (int i = 0; i < MAX_NODES; ++i) {
         peers[i].cmId = nullptr;
@@ -42,9 +42,8 @@ RDMASocket::RDMASocket()
 
     // Connect to all peers with id < myId
     for (int i = 0; i < myNodeConf->id; ++i) {
-        auto _peerNode = clusterConf->findConfById(i);
-        expectTrue(_peerNode.has_value());
-        auto peerNode = _peerNode.value();
+        auto peerNode = clusterConf->findConfById(i);
+        expectTrue(peerNode.id >= 0);
 
         expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
         cm2id[(uint64_t)peers[i].cmId] = i;
@@ -59,13 +58,7 @@ RDMASocket::RDMASocket()
 
 RDMASocket::~RDMASocket()
 {
-    shouldRun = false;
-
-    for (int i = 0; i < MAX_CQS; ++i)
-        if (cqPoller[i].joinable())
-            cqPoller[i].join();
-    if (ecPoller.joinable())
-        ecPoller.join();
+    stopAndJoin();
 
     for (int i = 0; i < MAX_NODES; ++i) {
         if (peers[i].qp) 
@@ -92,6 +85,26 @@ RDMASocket::~RDMASocket()
 void RDMASocket::registerHashTable(HashTable *hashTable)
 {
     this->hashTable = hashTable;
+}
+
+/* Stop all listener threads and join them to the current thread */
+void RDMASocket::stopAndJoin()
+{
+    if (std::this_thread::get_id() != mainThreadId) {
+        d_err("cannot stopAndJoin from non-main threads");
+        return;
+    }
+    if (!shouldRun)
+        return;
+
+    shouldRun = false;
+    for (int i = 0; i < MAX_CQS; ++i)
+        if (cqPoller[i].joinable())
+            cqPoller[i].join();
+    if (ecPoller.joinable())
+        ecPoller.join();
+    
+    d_info("all joinable listener threads have joined");
 }
 
 /* This function is expected to run as a single thread. */
@@ -345,6 +358,15 @@ bool RDMASocket::isPeerAlive(int peerId)
 /* Issue a send request to the designated peer, and return a unique task ID. */
 uint32_t RDMASocket::postSend(int peerId, uint64_t length, int specialTaskId)
 {
+    if (!shouldRun) {
+        d_err("send request after shouldRun=false is ignored");
+        return;
+    }
+    if (!hashTable) {
+        d_err("send request before registering a hash table is ignored");
+        return;
+    }
+
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
     uint32_t taskId = (specialTaskId < 0 ?
@@ -371,6 +393,15 @@ uint32_t RDMASocket::postSend(int peerId, uint64_t length, int specialTaskId)
 /* Issue a receive request to the designated peer, and return a unique task ID. */
 uint32_t RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
 {
+    if (!shouldRun) {
+        d_err("recv request after shouldRun=false is ignored");
+        return;
+    }
+    if (!hashTable) {
+        d_err("recv request before registering a hash table is ignored");
+        return;
+    }
+
     ibv_recv_wr wr, *badWr = nullptr;
     ibv_sge sge;
     uint32_t taskId = (specialTaskId < 0 ?
@@ -396,6 +427,15 @@ uint32_t RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
 uint32_t RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
                                uint64_t length, int imm, int specialTaskId)
 {
+    if (!shouldRun) {
+        d_err("write request after shouldRun=false is ignored");
+        return;
+    }
+    if (!hashTable) {
+        d_err("write request before registering a hash table is ignored");
+        return;
+    }
+
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
     uint32_t taskId = (specialTaskId < 0 ?
@@ -429,6 +469,15 @@ uint32_t RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t loc
 uint32_t RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, 
                               uint64_t length, int specialTaskId)
 {
+    if (!shouldRun) {
+        d_err("read request after shouldRun=false is ignored");
+        return;
+    }
+    if (!hashTable) {
+        d_err("read request before registering a hash table is ignored");
+        return;
+    }
+
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
     uint32_t taskId = (specialTaskId < 0 ?

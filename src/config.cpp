@@ -1,4 +1,5 @@
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <fstream>
@@ -25,9 +26,9 @@ CmdLineConfig::CmdLineConfig()
 {
     clusterConfigFile = "cluster.conf";
     pmemDeviceName = "/dev/pmem0";
-    pmemSize = 1ull << 32;
-    ipv6PortStr = "19875";
-    ibDeviceName = "ib0";
+    pmemSize = 1lu << 32;
+    ipPortStr = "19875";
+    ibDeviceName = "";
     ibPort = 1;
 }
 
@@ -42,7 +43,7 @@ ClusterConfig::ClusterConfig(string filename)
 
     int nodeId;
     string hostname;
-    string ipv6AddrStr;
+    string ipAddrStr;
 
     ifstream fin(filename);
     if (!fin) {
@@ -51,7 +52,7 @@ ClusterConfig::ClusterConfig(string filename)
     }
     
     int i;
-    for (i = 0; fin >> nodeId >> hostname >> ipv6AddrStr; ++i) {
+    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr; ++i) {
         if (i >= MAX_NODES) {
             d_err("there must be no more than %d nodes", MAX_NODES);
             exit(-1);
@@ -62,16 +63,17 @@ ClusterConfig::ClusterConfig(string filename)
             exit(-1);
         }
 
+        /* This `addrinfo` instance is not released until deconstruction */
         addrinfo *ai = nullptr;
-        getaddrinfo(ipv6AddrStr.c_str(), cmdConf->ipv6PortStr.c_str(), nullptr, &ai);
+        getaddrinfo(ipAddrStr.c_str(), cmdConf->ipPortStr.c_str(), nullptr, &ai);
 
         nodeIds.insert(nodeId);
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
-        nodeConf[nodeId].ipv6AddrStr = ipv6AddrStr;
+        nodeConf[nodeId].ipAddrStr = ipAddrStr;
         nodeConf[nodeId].ai = ai;
         nodeConf[nodeId].type = NODE_DS;
-        ip2id[nodeConf[nodeId].ipv6AddrStr] = nodeId;
+        ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;
         host2id[hostname] = nodeId;
     }
     nodeCount = i;
@@ -84,34 +86,36 @@ ClusterConfig::~ClusterConfig()
         freeaddrinfo(nodeConf[i].ai);
 }
 
-optional<NodeConfig> ClusterConfig::findConfById(int id) const
+NodeConfig ClusterConfig::findConfById(int id) const
 {
     if (id >= 0 && id < nodeCount && nodeConf[id].id == id)
         return nodeConf[id];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findConfByHostname(const string &hostname) const
+NodeConfig ClusterConfig::findConfByHostname(const string &hostname) const
 {
     auto it = host2id.find(hostname);
     if (it != host2id.end())
         return nodeConf[it->second];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findConfByIPv6Str(const string &ipv6AddrStr) const
+NodeConfig ClusterConfig::findConfByIPStr(const string &ipAddrStr) const
 {
-    auto it = ip2id.find(ipv6AddrStr);
+    auto it = ip2id.find(ipAddrStr);
     if (it != ip2id.end())
         return nodeConf[it->second];
-    return {};
+    return NodeConfig();
 }
 
-optional<NodeConfig> ClusterConfig::findMyself() const
+NodeConfig ClusterConfig::findMyself() const
 {
     static char hostname[MAX_HOSTNAME_LEN];
     gethostname(hostname, MAX_HOSTNAME_LEN);
-    return findConfByHostname(hostname);
+    hostent *hent = gethostbyname(hostname);
+    string ipAddr = inet_ntoa(*(in_addr *)(hent->h_addr_list[0]));
+    return findConfByIPStr(ipAddr);
 }
 
 // MemoryConfig part

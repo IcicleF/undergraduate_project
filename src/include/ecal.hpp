@@ -41,7 +41,7 @@ public:
     ~ECAL();
     
     Page readBlock(uint64_t index);
-    void writeBlock(Page page);
+    void writeBlock(Page &page);
 
     /* Returns the cluster's capacity in 4KB BLOCKS */
     __always_inline uint64_t getClusterCapacity() const { return capacity; }

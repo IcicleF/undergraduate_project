@@ -75,4 +75,15 @@
 #endif
 #define __packed __attribute__((packed))
 
+extern std::thread::id mainThreadId;
+
+/*
+ * This macro collects necessary information about the environment,
+ * and must be called before ANYTHING in Galois.
+ */
+#define COLLECT_MAIN_INFO()                         \
+    do {                                            \
+        mainThreadId = std::this_thread::get_id();  \
+    } while (0);
+
 #endif // COMMONS_HPP

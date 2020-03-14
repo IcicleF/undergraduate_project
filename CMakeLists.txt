@@ -7,7 +7,8 @@ set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS}")
 # Find dependencies
 set (CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/modules")
 find_package (Threads REQUIRED)
-include_directories (${FUSE_INCLUDE_DIR} ${PMEM_INCLUDE_DIR} src/include)
+find_package (gflags REQUIRED)
+include_directories (${gflags_INCLUDE_DIR} src/include)
 
 # Store sources & libraries to variables
 # This violates modern CMake principles, but it's convenient :)
@@ -21,6 +22,7 @@ set (LIBS
     ${CMAKE_THREAD_LIBS_INIT}
     isal
     ibverbs
+    gflags
 )
 
 # Main & Test executables

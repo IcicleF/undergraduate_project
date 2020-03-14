@@ -18,7 +18,6 @@ ECAL::ECAL()
     
     allocTable = new AllocationTable<BlockTy>();
     rpcInterface = new RPCInterface();
-    rpcInterface->registerAllocTable(allocTable);
 
     if (clusterConf->getClusterSize() % N != 0) {
         d_err("FIXME: clusterSize %% N != 0, exit");
@@ -56,7 +55,7 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     auto pos = getDataPos(index);
     int errs = 0;
     for (int i = 0, j = pos.startNodeId; i < K && j < pos.startNodeId + N; ++j)
-        if (rpcInterface->isAlive(j))
+        if (rpcInterface->isPeerAlive(j))
             decodeIndex[i++] = j;
         else if (j < pos.startNodeId + K)
             errIndex[errs++] = j;
@@ -116,7 +115,7 @@ ECAL::Page ECAL::readBlock(uint64_t index)
     return res;
 }
 
-void ECAL::writeBlock(ECAL::Page page)
+void ECAL::writeBlock(ECAL::Page &page)
 {
     static uint8_t *data[K];
     

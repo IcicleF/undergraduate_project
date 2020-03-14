@@ -23,6 +23,8 @@ struct Message
         MESG_REMOTE_MR,
         MESG_RPC_CALL,
         MESG_RPC_RESPONSE,
+        MESG_SYNC_REQUEST,
+        MESG_SYNC_RESPONSE,
         MESG_INVALID
     } type;
 

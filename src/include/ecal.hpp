@@ -43,7 +43,9 @@ public:
     Page readBlock(uint64_t index);
     void writeBlock(Page &page);
 
-    /* Returns the cluster's capacity in 4KB BLOCKS */
+    void syncStop();
+
+    /* Returns the cluster's capacity in 4kB blocks */
     __always_inline uint64_t getClusterCapacity() const { return capacity; }
 
 private:

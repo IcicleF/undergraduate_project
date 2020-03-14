@@ -62,11 +62,23 @@ bool RPCInterface::isPeerAlive(int peerId)
     return socket->isPeerAlive(peerId);
 }
 
+/*
+ * Synchronize a special RPC message among all peers.
+ * - Send to: all peers with id < myId
+ * - Recv from: all peers with id > myId
+ * 
+ * This function blocks until all messages are responded/received.
+ */
+void RPCInterface::syncAmongPeers()
+{
+
+}
+
 /* Stops RPCInterface listener threads and the underlying RDMASocket. */
-void RPCInterface::stopAndJoin()
+void RPCInterface::stopListenerAndJoin()
 {
     if (std::this_thread::get_id() != mainThreadId) {
-        d_err("cannot stopAndJoin from non-main threads");
+        d_err("cannot execute stopListenerAndJoin from non-main threads");
         return;
     }
     if (!shouldRun)
@@ -78,10 +90,14 @@ void RPCInterface::stopAndJoin()
     
     d_info("all joinable listener threads have joined");
     d_info("now, try to stop RDMASocket...");
-    socket->stopAndJoin();
+    socket->stopListenerAndJoin();
 }
 
 void RPCInterface::rpcListen()
 {
     
+
+    while (shouldRun) {
+
+    }
 }

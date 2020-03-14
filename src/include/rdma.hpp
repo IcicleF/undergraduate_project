@@ -67,7 +67,7 @@ public:
     void registerHashTable(HashTable *hashTable);
     void verboseQP(int peerId);
     bool isPeerAlive(int peerId);
-    void stopAndJoin();
+    void stopListenerAndJoin();
 
     uint32_t postSend(int peerId, uint64_t length, int specialTaskId = -1);
     uint32_t postReceive(int peerId, uint64_t length, int specialTaskId = -1);
@@ -76,8 +76,8 @@ public:
     uint32_t postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length,
                       int specialTaskId = -1);
 
-    int pollCompletion(ibv_wc *wc);
-    int pollOnce(ibv_wc *wc);
+    int pollRecvCompletion(ibv_wc *wc);
+    int pollRecvOnce(ibv_wc *wc);
 
 private:
     void listenRDMAEvents();
@@ -86,23 +86,24 @@ private:
     void onConnectionRequest(rdma_cm_event *event);
     void onConnectionEstablished(rdma_cm_event *event);
     void onDisconnected(rdma_cm_event *event);
-    void onCompletion(ibv_wc *wc);
+    void onSendCompletion(ibv_wc *wc);
 
     void buildResources(ibv_context *ctx);
     void buildConnection(rdma_cm_id *cmId);
     void buildConnParam(rdma_conn_param *param);
     void destroyConnection(rdma_cm_id *cmId);
 
-    void listenCQ(int index);
+    void listenSendCQ();                    /* listen cq[CQ_SEND]: threaded */
 
     HashTable *hashTable = nullptr;         /* Record completion status */
 
     ibv_context *ctx = nullptr;
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
-    ibv_cq *cq[MAX_CQS];                    /* CQ array */
+    ibv_cq *cq[MAX_CQS];                    /* cq[0]: ibv_post_send (acknowlegde)
+                                             * cq[1]: ibv_post_recv (event) */
     ibv_comp_channel *compChannel[MAX_CQS]; /* Complete channel array */
-    std::thread cqPoller[MAX_CQS];          /* listenCQ thread */
+    std::thread cqSendPoller;               /* listenSendCQ thread */
 
     rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
     rdma_cm_id *listener = nullptr;         /* RDMA listener */

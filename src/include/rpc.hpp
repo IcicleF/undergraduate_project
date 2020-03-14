@@ -24,7 +24,8 @@ public:
     __always_inline void __cancelMarking(int peerId) { peerAliveStatus[peerId] = 0; }
 
     bool isPeerAlive(int peerId);
-    void stopAndJoin();
+    void stopListenerAndJoin();
+    void syncAmongPeers();
 
     __always_inline
     uint32_t remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst,
@@ -38,14 +39,12 @@ public:
     {
         return socket->postWrite(peerId, remoteDstShift, localSrc, length, imm, specialTaskId);
     }
-
-    __always_inline HashTable *getHashTable() { return hashTable; }
-    
     
     void rpcListen();
     int rpcProcessCall(int peerId, const Message *message, Message *response);
     int remoteRPCCall(int peerId, const Message *request, Message *response);
 
+    __always_inline HashTable *getHashTable() { return hashTable; }
     __always_inline RDMASocket *getRDMASocket() const { return socket; }
 
 private:

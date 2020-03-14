@@ -44,6 +44,14 @@ ECAL::~ECAL()
     }
 }
 
+/* Synchronously stops ECAL */
+void ECAL::syncStop()
+{
+    rpcInterface->stopListenerAndJoin();
+    rpcInterface->getRDMASocket()->stopListenerAndJoin();
+    rpcInterface->getRDMASocket()->stopListenerAndJoin();
+}
+
 ECAL::Page ECAL::readBlock(uint64_t index)
 {
     static BlockTy readBuffer[K];

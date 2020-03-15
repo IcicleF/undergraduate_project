@@ -28,6 +28,7 @@ struct CmdLineConfig
 
     std::string clusterConfigFile;      /* Cluster configuration file name */
     std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
+    int tcpPort;                        /* RDMA listen port */
     uint64_t pmemSize;                  /* Data pool size in blocks */
 };
 
@@ -48,6 +49,7 @@ struct NodeConfig
     int id = -1;
     std::string hostname;
     std::string ipAddrStr;
+    std::string ibDevIPAddrStr;
     NodeType type;
 };
 

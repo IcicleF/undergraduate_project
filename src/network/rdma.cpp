@@ -20,6 +20,7 @@ RDMASocket::RDMASocket()
     sockaddr_in addr;
     memset(&addr, 0, sizeof(sockaddr));
     addr.sin_family = AF_INET;
+    addr.sin_port = htons(cmdConf->tcpPort);
 
     for (int i = 0; i < MAX_NODES; ++i) {
         peers[i].cmId = nullptr;
@@ -37,9 +38,11 @@ RDMASocket::RDMASocket()
     expectZero(rdma_listen(listener, MAX_NODES));
 
     int port = ntohs(rdma_get_src_port(listener));
-    char portStr[8];
-    snprintf(portStr, 8, "%d", port);
+    expectTrue(port == cmdConf->tcpPort);
     d_info("listening on port: %d", port);
+
+    char portStr[16];
+    snprintf(portStr, 16, "%d", port);
 
     /* Connect to all peers with id < myId */
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {

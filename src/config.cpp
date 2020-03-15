@@ -27,6 +27,7 @@ CmdLineConfig::CmdLineConfig()
     clusterConfigFile = "cluster.conf";
     pmemDeviceName = "/mnt/gjfs/sim0";
     pmemSize = 1lu << 32;
+    tcpPort = 34343;
 }
 
 // ClusterConfig part
@@ -41,6 +42,7 @@ ClusterConfig::ClusterConfig(string filename)
     int nodeId;
     string hostname;
     string ipAddrStr;
+    string ibDevIPAddrStr;
 
     ifstream fin(filename);
     if (!fin) {
@@ -49,7 +51,7 @@ ClusterConfig::ClusterConfig(string filename)
     }
     
     int i;
-    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr; ++i) {
+    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr >> ibDevIPAddrStr; ++i) {
         if (i >= MAX_NODES) {
             d_err("there must be no more than %d nodes", MAX_NODES);
             exit(-1);
@@ -64,6 +66,7 @@ ClusterConfig::ClusterConfig(string filename)
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddrStr = ipAddrStr;
+	nodeConf[nodeId].ibDevIPAddrStr = ibDevIPAddrStr;
         nodeConf[nodeId].type = NODE_DS;
         ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;
         host2id[hostname] = nodeId;

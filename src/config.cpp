@@ -116,7 +116,7 @@ MemoryConfig::MemoryConfig(uint64_t base, uint64_t capacity)
 }
 
 /*
- * Initializes from FUSE command-line-specified arguments.
+ * Initializes from command line arguments.
  * Creates memory mapping for the pmem device specified.
  */
 MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
@@ -138,6 +138,7 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
     }
 
     capacity = conf.pmemSize;
+    d_info("MemoryConfig: [%p, %p)", (void *)base, (void *)(base + capacity));
     calcBaseAddresses();
 }
 

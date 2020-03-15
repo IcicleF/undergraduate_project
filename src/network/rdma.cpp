@@ -7,7 +7,7 @@
 #include <debug.hpp>
 #include <rdma.hpp>
 
-RDMASocket::RDMASocket()
+RDMASocket::RDMASocket(HashTable *hashTable)
 {
     if (!cmdConf || !clusterConf || !memConf || !myNodeConf) {
         d_err("all configurations should be initialized!");
@@ -16,6 +16,7 @@ RDMASocket::RDMASocket()
 
     shouldRun = true;
     nodeIDBuf = myNodeConf->id;
+    registerHashTable(hashTable);
 
     sockaddr_in addr;
     memset(&addr, 0, sizeof(sockaddr));
@@ -51,7 +52,7 @@ RDMASocket::RDMASocket()
             continue;
 
         addrinfo *ai;
-        getaddrinfo(peerNode.ipAddrStr.c_str(), portStr, nullptr, &ai);
+        getaddrinfo(peerNode.ibDevIPAddrStr.c_str(), portStr, nullptr, &ai);
 
         expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
         cm2id[(uint64_t)peers[i].cmId] = i;
@@ -261,6 +262,7 @@ void RDMASocket::buildResources(ibv_context *ctx)
                   IBV_ACCESS_REMOTE_READ |
                   IBV_ACCESS_REMOTE_WRITE |
                   IBV_ACCESS_REMOTE_ATOMIC;
+    d_info("register MR: %p + [0 - %lu]", memConf->getMemory(), memConf->getCapacity());
     expectNonZero(mr = ibv_reg_mr(pd, memConf->getMemory(), memConf->getCapacity(), mrFlags));
 }
 

@@ -64,7 +64,7 @@ class RDMASocket
     friend class RPCInterface;
 
 public:
-    explicit RDMASocket();
+    explicit RDMASocket(HashTable *hashTable);
     ~RDMASocket();
     RDMASocket(const RDMASocket &) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;

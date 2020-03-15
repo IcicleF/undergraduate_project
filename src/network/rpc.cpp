@@ -26,9 +26,8 @@ RPCInterface::RPCInterface()
     }
 
     memset(peerAliveStatus, 0, sizeof(peerAliveStatus));
-    socket = new RDMASocket();
     hashTable = new HashTable();
-    socket->registerHashTable(hashTable);
+    socket = new RDMASocket(hashTable);
 
     shouldRun = true;
     rpcListener = std::thread(&RPCInterface::rpcListen, this);

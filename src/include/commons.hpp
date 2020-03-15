@@ -32,7 +32,6 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
-#include <optional>
 
 #include "debug.hpp"
 

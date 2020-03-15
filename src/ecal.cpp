@@ -70,7 +70,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
-    uint32_t tasks[K], taskCnt = 0;
+    uint32_t tasks[K];
+    int taskCnt = 0;
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
             uint32_t taskId = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
@@ -102,7 +103,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         return;
     }
     for (int i = 0; i < errs; ++i)
-        memcpy(&decodeMatrix[K * i], &invertMatrix[K * decodeIndex[i]], K);
+        memcpy(&decodeMatrix[K * i], &invertMatrix[K * errIndex[i]], K);
     
     uint8_t gfTbls[K * P * 32];
     ec_init_tables(K, errs, decodeMatrix, gfTbls);

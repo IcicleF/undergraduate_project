@@ -106,18 +106,18 @@ void RDMASocket::stopListenerAndJoin()
 void RDMASocket::listenRDMAEvents()
 {
     typedef void (RDMASocket:: *EventHandler)(rdma_cm_event *);
-    static constexpr EventHandler handlers[] = {
-        [RDMA_CM_EVENT_ADDR_RESOLVED] = &RDMASocket::onAddrResolved,
-        [RDMA_CM_EVENT_ROUTE_RESOLVED] = &RDMASocket::onRouteResolved,
-        [RDMA_CM_EVENT_CONNECT_REQUEST] = &RDMASocket::onConnectionRequest,
-        [RDMA_CM_EVENT_ESTABLISHED] = &RDMASocket::onConnectionEstablished,
-        [RDMA_CM_EVENT_DISCONNECTED] = &RDMASocket::onDisconnected
-    };
+    static EventHandler handlers[32] = { nullptr };
+    handlers[RDMA_CM_EVENT_ADDR_RESOLVED] = &RDMASocket::onAddrResolved;
+    handlers[RDMA_CM_EVENT_ROUTE_RESOLVED] = &RDMASocket::onRouteResolved;
+    handlers[RDMA_CM_EVENT_CONNECT_REQUEST] = &RDMASocket::onConnectionRequest;
+    handlers[RDMA_CM_EVENT_ESTABLISHED] = &RDMASocket::onConnectionEstablished;
+    handlers[RDMA_CM_EVENT_DISCONNECTED] = &RDMASocket::onDisconnected;
 
     rdma_cm_event *event;
     while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
         EventHandler handler = handlers[event->event];
-        (this->*handler)(event);
+        if (handler)
+	    (this->*handler)(event);
         rdma_ack_cm_event(event);
     }
 }
@@ -191,18 +191,13 @@ void RDMASocket::onDisconnected(rdma_cm_event *event)
 
 void RDMASocket::onSendCompletion(ibv_wc *wc)
 {
-    static constexpr const char *opcode2str[] = {
-        [IBV_WC_SEND] = "SEND",
-        [IBV_WC_RDMA_READ] = "RDMA_READ",
-        [IBV_WC_RDMA_WRITE] = "RDMA_WRITE"
-    };
     int peerId = WRID_PEER(wc->wr_id);
     uint32_t taskId = WRID_TASK(wc->wr_id);
 
     RDMAConnection *peer = peers + peerId;
     if (wc->status != IBV_WC_SUCCESS) {
-        d_err("wc failed (peer: %d, op: %s, err: %d)",
-                peer->peerId, opcode2str[wc->opcode], (int)wc->status);
+        d_err("wc failed (peer: %d, op: %d, err: %d)",
+                peer->peerId, (int)wc->opcode, (int)wc->status);
         return;
     }
     if (wc->opcode & IBV_WC_RECV) {

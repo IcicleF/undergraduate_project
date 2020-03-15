@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.5)
 project (galois LANGUAGES CXX)
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD 14)
 set (COMPILER_FLAGS "-O3 -march=native -mtune=native -Wall -g -D_FILE_OFFSET_BITS=64")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS}")
 

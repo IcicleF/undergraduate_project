@@ -36,7 +36,7 @@ RDMASocket::RDMASocket()
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
 
-    int port = ntohl(rdma_get_src_port(listener));
+    int port = ntohs(rdma_get_src_port(listener));
     char portStr[8];
     snprintf(portStr, 8, "%d", port);
     d_info("listening on port: %d", port);
@@ -44,7 +44,7 @@ RDMASocket::RDMASocket()
     /* Connect to all peers with id < myId */
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
         auto peerNode = (*clusterConf)[i];
-        if (peerNode.id > myNodeConf->id)
+        if (peerNode.id >= myNodeConf->id)
             continue;
 
         addrinfo *ai;

@@ -44,83 +44,69 @@ ECAL::~ECAL()
     }
 }
 
-/* Synchronously stops ECAL */
-void ECAL::syncStop()
-{
-    rpcInterface->stopListenerAndJoin();
-    rpcInterface->getRDMASocket()->stopListenerAndJoin();
-    rpcInterface->getRDMASocket()->stopListenerAndJoin();
-}
-
-ECAL::Page ECAL::readBlock(uint64_t index)
+void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
     static BlockTy readBuffer[K];
     static int decodeIndex[K], errIndex[K];
+    uint8_t *recoverSrc[N], *recoverOutput[N];
+    HashTable *hashTable = rpcInterface->getHashTable();
 
-    Page res(index);
-    memset(&res.page, 0, Block4K::capacity);
+    page.index = index;
+    memset(page.page.data, 0, Block4K::capacity);
 
     auto pos = getDataPos(index);
     int errs = 0;
-    for (int i = 0, j = pos.startNodeId; i < K && j < pos.startNodeId + N; ++j)
-        if (rpcInterface->isPeerAlive(j))
-            decodeIndex[i++] = j;
-        else if (j < pos.startNodeId + K)
-            errIndex[errs++] = j;
+    for (int i = 0, j = pos.startNodeId, k = 0; i < K && j < pos.startNodeId + N; ++j) {
+        int idx = j - pos.startNodeId;
+        if (rpcInterface->isPeerAlive(j)) {
+            decodeIndex[i] = j;
+            recoverSrc[i++] = (idx < K ? page.page.data + idx * BlockTy::size : readBuffer[k++].data);
+        }
+        else if (idx < K) {
+            errIndex[errs] = j;
+            recoverOutput[errs++] = page.page.data + idx * BlockTy::size;
+        }
+    }
     
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
+    uint32_t tasks[K], taskCnt = 0;
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
-            int ret = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
-                    (uint64_t)(readBuffer + i), BlockTy::size);
-            if (ret < 0) {
-                d_err("failed to RDMA read from peer: %d, block set to zero", decodeIndex[i]);
-                memset(readBuffer + i, 0, BlockTy::size);
-            }
+            uint32_t taskId = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
+                    (uint64_t)recoverSrc[i], BlockTy::size);
+            tasks[taskCnt++] = taskId;
         }
         else
-            memcpy(readBuffer + i, allocTable->at(pos.row), BlockTy::size);
+            memcpy(recoverSrc[i], allocTable->at(pos.row), BlockTy::size);
+    }
+    for (int i = 0; i < taskCnt; ++i) {
+        while ((*hashTable)[tasks[i]] == 0) ;
+        hashTable->freeID(tasks[i]);
     }
 
     if (errs == 0)
-        memcpy(&res.page, readBuffer, Block4K::capacity);
-    else {
-        /* Perform decode */
-        uint8_t decodeMatrix[N * K];
-        uint8_t invertMatrix[N * K];
-        uint8_t b[K * K];
+        return;
+    
+    /* Perform decode */
+    uint8_t decodeMatrix[N * K];
+    uint8_t invertMatrix[N * K];
+    uint8_t b[K * K];
 
-        for (int i = 0; i < K; ++i)
-            decodeIndex[i] -= pos.startNodeId;
-        for (int i = 0; i < K; ++i)
-            for (int j = 0; j < K; ++j)
-                b[K * i + j] = encodeMatrix[K * decodeIndex[i] + j];
-        if (gf_invert_matrix(b, invertMatrix, K) < 0) {
-            d_err("cannot do matrix invert, return all zero");
-            return res;
-        }
-        for (int i = 0; i < errs; ++i)
-            for (int j = 0; j < K; ++j)
-                decodeMatrix[K * i + j] = invertMatrix[K * errIndex[i] + j];
-        
-        uint8_t *recoverSrc[N];
-        uint8_t *recoverOutput[N];
-        for (int i = 0; i < K; ++i)
-            recoverSrc[i] = readBuffer[i].data;
-        
-        uint8_t gfTbls[K * P * 32];
-        ec_init_tables(K, errs, decodeMatrix, gfTbls);
-        ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
-
-        for (int i = 0; i < K; ++i)
-            if (decodeIndex[i] < K)
-                memcpy(res.page.data + BlockTy::size * decodeIndex[i], readBuffer[i].data, BlockTy::size);
-        for (int i = 0; i < errs; ++i)
-            memcpy(res.page.data + BlockTy::size * errIndex[i], recoverOutput[i], BlockTy::size);
+    for (int i = 0; i < K; ++i)
+        decodeIndex[i] -= pos.startNodeId;
+    for (int i = 0; i < K; ++i)
+        memcpy(&b[K * i], &encodeMatrix[K * decodeIndex[i]], K);
+    if (gf_invert_matrix(b, invertMatrix, K) < 0) {
+        d_err("cannot do matrix invert!");
+        return;
     }
-
-    return res;
+    for (int i = 0; i < errs; ++i)
+        memcpy(&decodeMatrix[K * i], &invertMatrix[K * decodeIndex[i]], K);
+    
+    uint8_t gfTbls[K * P * 32];
+    ec_init_tables(K, errs, decodeMatrix, gfTbls);
+    ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
 }
 
 void ECAL::writeBlock(ECAL::Page &page)

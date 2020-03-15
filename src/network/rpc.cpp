@@ -37,6 +37,9 @@ RPCInterface::RPCInterface()
 /* Destructor deallocates `clusterConf` and `myNodeConf`. */
 RPCInterface::~RPCInterface()
 {
+    shouldRun = false;
+    stopListenerAndJoin();
+
     if (cmdConf) {
         delete cmdConf;
         cmdConf = nullptr;
@@ -71,7 +74,35 @@ bool RPCInterface::isPeerAlive(int peerId)
  */
 void RPCInterface::syncAmongPeers()
 {
+    for (int i = 0; i < myNodeConf->id; ++i) {
+        auto *msg = reinterpret_cast<Message *>(socket->peers[i].sendRegion);
+        msg->type = Message::MESG_SYNC_REQUEST;
+        
+        socket->postSend(i, sizeof(Message), SP_SYNC_SEND);
+        
+        ibv_wc wc;
+        socket->postReceive(i, sizeof(Message), SP_SYNC_RECV);
+        expectPositive(socket->pollRecvCompletion(&wc));
+        expectTrue(WRID_PEER(wc.wr_id) == i && WRID_TASK(wc.wr_id) == SP_SYNC_RECV);
 
+        auto *resp = reinterpret_cast<Message *>(socket->peers[i].recvRegion);
+        expectTrue(resp->type == Message::MESG_SYNC_RESPONSE);
+    }
+
+    for (int i = myNodeConf->id + 1; i < clusterConf->getClusterSize(); ++i) {
+        ibv_wc wc;
+        socket->postReceive(i, sizeof(Message), SP_SYNC_RECV);
+        expectPositive(socket->pollRecvCompletion(&wc));
+        expectTrue(WRID_PEER(wc.wr_id) == i && WRID_TASK(wc.wr_id) == SP_SYNC_RECV);
+
+        auto *msg = reinterpret_cast<Message *>(socket->peers[i].recvRegion);
+        expectTrue(msg->type == Message::MESG_SYNC_REQUEST);
+
+        auto *resp = reinterpret_cast<Message *>(socket->peers[i].sendRegion);
+        resp->type = Message::MESG_SYNC_REQUEST;
+        
+        socket->postSend(i, sizeof(Message), SP_SYNC_SEND);
+    }
 }
 
 /* Stops RPCInterface listener threads and the underlying RDMASocket. */

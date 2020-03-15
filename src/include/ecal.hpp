@@ -40,10 +40,10 @@ public:
     explicit ECAL();
     ~ECAL();
     
-    Page readBlock(uint64_t index);
+    void readBlock(uint64_t index, Page &page);
     void writeBlock(Page &page);
 
-    void syncStop();
+    __always_inline RPCInterface *getRPCInterface() const { return rpcInterface; }
 
     /* Returns the cluster's capacity in 4kB blocks */
     __always_inline uint64_t getClusterCapacity() const { return capacity; }

@@ -12,7 +12,7 @@ include_directories (${gflags_INCLUDE_DIR} src/include)
 
 # Store sources & libraries to variables
 # This violates modern CMake principles, but it's convenient :)
-set (SOURCES
+add_library (galois_lib STATIC
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
@@ -22,7 +22,9 @@ set (LIBS
     ${CMAKE_THREAD_LIBS_INIT}
     isal
     ibverbs
+    rdmacm
     gflags
+    galois_lib
 )
 
 # Main & Test executables

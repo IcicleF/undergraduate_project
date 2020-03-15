@@ -24,14 +24,9 @@ enum SpecialHash
 {
     SP_REMOTE_MR_SEND = 1,
     SP_REMOTE_MR_RECV,
+    SP_SYNC_SEND,
+    SP_SYNC_RECV,
     SP_TYPES
-};
-
-struct HashTableEntry
-{
-    bool complete;
-    enum Type { HTE_SEND_REQ, HTE_RECV_REQ, HTE_READ_REQ, HTE_WRITE_REQ } type;
-    uint64_t imm;
 };
 
 class LinearHashTable
@@ -43,17 +38,16 @@ public:
     }
     ~LinearHashTable() = default;
 
-    __always_inline uint32_t allocID(HashTableEntry::Type type)
+    __always_inline uint32_t allocID()
     {
         uint32_t id = rnd(engine);
         while (unlikely(setBit(id) == 1))
             id = rnd(engine);
-        entries[id].complete = false;
-        entries[id].type = type;
+        entries[id] = 0;
         return id;
     }
     __always_inline void freeID(uint32_t id) { clearBit(id); }
-    __always_inline HashTableEntry &operator[](uint32_t id) { return entries[id]; }
+    __always_inline uint32_t &operator[](uint32_t id) { return entries[id]; }
 
 private:
     /* Atomically test and set bit (allocate). */
@@ -89,7 +83,7 @@ private:
 
     static const int maxEntries = 1 << 20;
     uint8_t bitmap[maxEntries >> 3];
-    HashTableEntry entries[maxEntries];
+    uint32_t entries[maxEntries];
 };
 
 class MapHashTable
@@ -98,23 +92,22 @@ public:
     explicit MapHashTable() : rnd(SP_TYPES, UINT32_MAX) { };
     ~MapHashTable() = default;
 
-    __always_inline uint32_t allocID(HashTableEntry::Type type)
+    __always_inline uint32_t allocID()
     {
         uint32_t id = rnd(engine);
         while (unlikely(hashMap.find(id) != hashMap.end()))
             id = rnd(engine);
-        hashMap[id].complete = false;
-        hashMap[id].type = type;
+        hashMap[id] = 0;
         return id;
     }
     __always_inline void freeID(uint32_t id) { hashMap.erase(id); }
-    __always_inline HashTableEntry &operator[](uint32_t id) { return hashMap[id]; }
+    __always_inline uint32_t &operator[](uint32_t id) { return hashMap[id]; }
 
 private:
     std::mt19937 engine;
     std::uniform_int_distribution<uint32_t> rnd;
 
-    std::unordered_map<uint32_t, HashTableEntry> hashMap;
+    std::unordered_map<uint32_t, uint32_t> hashMap;
 };
 
 typedef LinearHashTable HashTable;

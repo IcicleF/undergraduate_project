@@ -43,6 +43,9 @@ struct RDMAConnection
     uint8_t *recvRegion;                /* Recv Region: allocated */
 };
 
+/* Predeclaration for RDMASocket to friend it */
+class RPCInterface;
+
 /*
  * Store all necessary resources for RDMA connection with other nodes.
  * 
@@ -58,6 +61,8 @@ struct RDMAConnection
  */
 class RDMASocket
 {
+    friend class RPCInterface;
+
 public:
     explicit RDMASocket();
     ~RDMASocket();
@@ -70,14 +75,13 @@ public:
     void stopListenerAndJoin();
 
     uint32_t postSend(int peerId, uint64_t length, int specialTaskId = -1);
-    uint32_t postReceive(int peerId, uint64_t length, int specialTaskId = -1);
+    void postReceive(int peerId, uint64_t length, int specialTaskId = 0);
     uint32_t postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length,
                        int imm = -1, int specialTaskId = -1);
     uint32_t postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length,
                       int specialTaskId = -1);
 
     int pollRecvCompletion(ibv_wc *wc);
-    int pollRecvOnce(ibv_wc *wc);
 
 private:
     void listenRDMAEvents();
@@ -115,5 +119,9 @@ private:
 
     bool shouldRun;                         /* Stop threads if false */
 };
+
+#define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))
+#define WRID_PEER(id)   ((int)(((id) >> 32) & 0xFFFFFFFF))
+#define WRID_TASK(id)   ((uint32_t)((id) & 0xFFFFFFFF))
 
 #endif // RDMA_HPP

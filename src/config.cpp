@@ -25,7 +25,7 @@ std::atomic<bool> isRunning;
 CmdLineConfig::CmdLineConfig()
 {
     clusterConfigFile = "cluster.conf";
-    pmemDeviceName = "/dev/pmem0";
+    pmemDeviceName = "/mnt/gjfs/sim0";
     pmemSize = 1lu << 32;
     ipPortStr = "19875";
     ibDeviceName = "";

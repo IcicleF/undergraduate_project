@@ -57,6 +57,8 @@ int main(int argc, char **argv)
     }
 
     COLLECT_MAIN_INFO();
+    
+    cmdConf = new CmdLineConfig();
     ECAL ecal;
 
     if (myNodeConf->id != 0) {
@@ -158,5 +160,6 @@ int main(int argc, char **argv)
     printf("\n");
 
     ecal.getRPCInterface()->syncAmongPeers();
+    delete cmdConf;
     return 0;
 }

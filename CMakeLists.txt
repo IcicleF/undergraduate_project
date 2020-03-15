@@ -38,3 +38,5 @@ foreach (TEST_SRC ${TEST_SOURCES})
     target_link_libraries (${TEST_NAME} ${LIBS})
 endforeach ()
 
+# Copy cluster.conf
+configure_file (cluster.conf ${CMAKE_BINARY_DIR}/cluster.conf COPYONLY)

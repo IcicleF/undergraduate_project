@@ -36,18 +36,29 @@ RDMASocket::RDMASocket()
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
 
-    // Connect to all peers with id < myId
-    for (int i = 0; i < myNodeConf->id; ++i) {
-        auto peerNode = clusterConf->findConfById(i);
-        expectTrue(peerNode.id >= 0);
+    /* Connect to all peers with id < myId */
+    for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+        auto peerNode = (*clusterConf)[i];
+        if (peerNode.id > myNodeConf->id)
+            continue;
 
         expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
         cm2id[(uint64_t)peers[i].cmId] = i;
         expectZero(rdma_resolve_addr(peers[i].cmId, nullptr, peerNode.ai->ai_addr, ADDR_RESOLVE_TIMEOUT));
     }
 
-    // Start after important events polled
+    int expectedConns = 0;
+    for (int i = 0; i < clusterConf->getClusterSize(); ++i)
+        if ((*clusterConf)[i].id > myNodeConf->id)
+            ++expectedConns;
+
     ecPoller = std::thread(&RDMASocket::listenRDMAEvents, this);
+
+    d_info("expect %d incoming connections", expectedConns);
+    if (expectedConns) {
+        d_info("start waiting...");
+        while (incomingConns < expectedConns) ;
+    }
 
     d_info("successfully created RDMASocket!");
 }
@@ -106,7 +117,7 @@ void RDMASocket::stopListenerAndJoin()
 void RDMASocket::listenRDMAEvents()
 {
     typedef void (RDMASocket:: *EventHandler)(rdma_cm_event *);
-    static EventHandler handlers[32] = { nullptr };
+    static EventHandler handlers[16] = { nullptr };
     handlers[RDMA_CM_EVENT_ADDR_RESOLVED] = &RDMASocket::onAddrResolved;
     handlers[RDMA_CM_EVENT_ROUTE_RESOLVED] = &RDMASocket::onRouteResolved;
     handlers[RDMA_CM_EVENT_CONNECT_REQUEST] = &RDMASocket::onConnectionRequest;
@@ -117,7 +128,9 @@ void RDMASocket::listenRDMAEvents()
     while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
         EventHandler handler = handlers[event->event];
         if (handler)
-	    (this->*handler)(event);
+            (this->*handler)(event);
+        else
+            d_warn("RDMA CM event type %d not handled", (int)event->event);
         rdma_ack_cm_event(event);
     }
 }

@@ -118,6 +118,7 @@ private:
     uint32_t nodeIDBuf;                     /* Send my node ID on connection */
 
     bool shouldRun;                         /* Stop threads if false */
+    int incomingConns = 0;                  /* Incoming successful connections count */
 };
 
 #define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))

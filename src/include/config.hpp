@@ -29,9 +29,6 @@ struct CmdLineConfig
     std::string clusterConfigFile;      /* Cluster configuration file name */
     std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
     uint64_t pmemSize;                  /* Data pool size in blocks */
-    std::string ipPortStr;              /* IP port (string) to establish connections */
-    std::string ibDeviceName;           /* InfiniBand device name (e.g. ib0) */
-    int ibPort;                         /* InfiniBand port */
 };
 
 #define GALOIS_OPTION(t, p) { t, offsetof(CmdLineConfig, p), 1 }
@@ -51,7 +48,6 @@ struct NodeConfig
     int id = -1;
     std::string hostname;
     std::string ipAddrStr;
-    addrinfo *ai;
     NodeType type;
 };
 

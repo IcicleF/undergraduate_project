@@ -36,15 +36,25 @@ RDMASocket::RDMASocket()
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
 
+    int port = ntohl(rdma_get_src_port(listener));
+    char portStr[8];
+    snprintf(portStr, 8, "%d", port);
+    d_info("listening on port: %d", port);
+
     /* Connect to all peers with id < myId */
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
         auto peerNode = (*clusterConf)[i];
         if (peerNode.id > myNodeConf->id)
             continue;
 
+        addrinfo *ai;
+        getaddrinfo(peerNode.ipAddrStr.c_str(), portStr, nullptr, &ai);
+
         expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
         cm2id[(uint64_t)peers[i].cmId] = i;
-        expectZero(rdma_resolve_addr(peers[i].cmId, nullptr, peerNode.ai->ai_addr, ADDR_RESOLVE_TIMEOUT));
+        expectZero(rdma_resolve_addr(peers[i].cmId, nullptr, ai->ai_addr, ADDR_RESOLVE_TIMEOUT));
+
+        freeaddrinfo(ai);
     }
 
     int expectedConns = 0;

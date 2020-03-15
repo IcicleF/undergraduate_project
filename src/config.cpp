@@ -27,9 +27,6 @@ CmdLineConfig::CmdLineConfig()
     clusterConfigFile = "cluster.conf";
     pmemDeviceName = "/mnt/gjfs/sim0";
     pmemSize = 1lu << 32;
-    ipPortStr = "19875";
-    ibDeviceName = "";
-    ibPort = 1;
 }
 
 // ClusterConfig part
@@ -63,27 +60,16 @@ ClusterConfig::ClusterConfig(string filename)
             exit(-1);
         }
 
-        /* This `addrinfo` instance is not released until deconstruction */
-        addrinfo *ai = nullptr;
-        getaddrinfo(ipAddrStr.c_str(), cmdConf->ipPortStr.c_str(), nullptr, &ai);
-
         nodeIds.insert(nodeId);
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddrStr = ipAddrStr;
-        nodeConf[nodeId].ai = ai;
         nodeConf[nodeId].type = NODE_DS;
         ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;
         host2id[hostname] = nodeId;
     }
     nodeCount = i;
     fin.close();
-}
-
-ClusterConfig::~ClusterConfig()
-{
-    for (int i = 0; i < nodeCount; ++i)
-        freeaddrinfo(nodeConf[i].ai);
 }
 
 NodeConfig ClusterConfig::findConfById(int id) const

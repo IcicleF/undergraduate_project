@@ -515,10 +515,11 @@ uint32_t RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t loca
 int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
     static ibv_cq *cq = nullptr;
+    void *ctx;
 
     while (true) {
         if (!cq) {
-            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, nullptr));
+            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, &ctx));
             ibv_ack_cq_events(cq, 1);
             expectZero(ibv_req_notify_cq(cq, 0));
         }

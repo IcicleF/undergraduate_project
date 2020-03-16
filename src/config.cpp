@@ -26,7 +26,7 @@ CmdLineConfig::CmdLineConfig()
 {
     clusterConfigFile = "cluster.conf";
     pmemDeviceName = "/mnt/gjfs/sim0";
-    pmemSize = 1lu << 32;
+    pmemSize = 1lu << 20;
     tcpPort = 34343;
 }
 
@@ -66,7 +66,7 @@ ClusterConfig::ClusterConfig(string filename)
         nodeConf[nodeId].id = nodeId;
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddrStr = ipAddrStr;
-	nodeConf[nodeId].ibDevIPAddrStr = ibDevIPAddrStr;
+        nodeConf[nodeId].ibDevIPAddrStr = ibDevIPAddrStr;
         nodeConf[nodeId].type = NODE_DS;
         ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;
         host2id[hostname] = nodeId;

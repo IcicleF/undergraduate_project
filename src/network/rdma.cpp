@@ -180,7 +180,7 @@ void RDMASocket::onConnectionRequest(rdma_cm_event *event)
 /* As a server or client, handle when a connection is established */
 void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
 {
-    RDMAConnection *peer = peers + cm2id[(uint64_t)event];
+    RDMAConnection *peer = peers + cm2id[(uint64_t)event->id];
     expectTrue(peer == reinterpret_cast<RDMAConnection *>(event->id->context));
 
     /* Send MR to peer */
@@ -250,9 +250,7 @@ void RDMASocket::buildResources(ibv_context *ctx)
         return;
     }
 
-    d_info("ibv_context: dev [%s, %s, %s, %s]",
-        ctx->device->name, ctx->device->dev_name, ctx->device->dev_path,
-        ctx->device->ibdev_path);
+    d_info("resource bound to device: %s", ctx->device->name);
 
     this->ctx = ctx;
     expectNonZero(pd = ibv_alloc_pd(this->ctx));
@@ -266,7 +264,6 @@ void RDMASocket::buildResources(ibv_context *ctx)
                   IBV_ACCESS_REMOTE_READ |
                   IBV_ACCESS_REMOTE_WRITE |
                   IBV_ACCESS_REMOTE_ATOMIC;
-    d_info("register MR: %p + [0 - %lu]", memConf->getMemory(), memConf->getCapacity());
     expectNonZero(mr = ibv_reg_mr(pd, memConf->getMemory(), memConf->getCapacity(), mrFlags));
 }
 

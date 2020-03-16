@@ -516,14 +516,19 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
     static ibv_cq *cq = nullptr;
 
-    if (!cq) {
-        expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, nullptr));
-        ibv_ack_cq_events(cq, 1);
-        expectZero(ibv_req_notify_cq(cq, 0));
-    }
+    while (true) {
+        if (!cq) {
+            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, nullptr));
+            ibv_ack_cq_events(cq, 1);
+            expectZero(ibv_req_notify_cq(cq, 0));
+        }
 
-    int ret = ibv_poll_cq(cq, 1, wc);
-    if (!ret)
-        cq = nullptr;
-    return ret;
+        d_info("cq event got, cq: %p", cq);
+
+        int ret = ibv_poll_cq(cq, 1, wc);
+        if (!ret)
+            cq = nullptr;
+        else
+            return ret;
+    }
 }

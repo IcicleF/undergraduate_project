@@ -250,6 +250,10 @@ void RDMASocket::buildResources(ibv_context *ctx)
         return;
     }
 
+    d_info("ibv_context: dev [%s, %s, %s, %s]",
+        ctx->device->name, ctx->device->dev_name, ctx->device->dev_path,
+        ctx->device->ibdev_path);
+
     this->ctx = ctx;
     expectNonZero(pd = ibv_alloc_pd(this->ctx));
     for (int i = 0; i < MAX_CQS; ++i) {

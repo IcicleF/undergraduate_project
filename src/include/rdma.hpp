@@ -97,16 +97,13 @@ private:
     void buildConnParam(rdma_conn_param *param);
     void destroyConnection(rdma_cm_id *cmId);
 
-    void listenSendCQ();                    /* listen cq[CQ_SEND]: threaded */
-
     HashTable *hashTable = nullptr;         /* Record completion status */
 
     ibv_context *ctx = nullptr;
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
-    ibv_cq *cq[MAX_CQS];                    /* cq[0]: ibv_post_send (acknowlegde)
-                                             * cq[1]: ibv_post_recv (event) */
-    ibv_comp_channel *compChannel[MAX_CQS]; /* Complete channel array */
+    ibv_cq *cq;                             /* Recv CQ (sends never generate CQEs) */
+    ibv_comp_channel *compChannel;          /* Complete channel */
     std::thread cqSendPoller;               /* listenSendCQ thread */
 
     rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */

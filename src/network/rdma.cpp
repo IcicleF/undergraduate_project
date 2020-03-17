@@ -87,9 +87,10 @@ RDMASocket::~RDMASocket()
         if (peers[i].cmId)
             rdma_destroy_id(peers[i].cmId);
     }
-    for (int i = 0; i < MAX_CQS; ++i)
-        if (cq[i])
-            ibv_destroy_cq(cq[i]);
+    if (cq)
+        ibv_destroy_cq(cq);
+    if (compChannel)
+        ibv_destroy_comp_channel(compChannel);
     
     if (mr)
         ibv_dereg_mr(mr);
@@ -193,10 +194,14 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
      * Immediately (and blockingly) poll this RDMA recv.
      * Because the connection is already established, we expect not blocking very long.
      */
-    ibv_wc wc;
-    expectPositive(pollRecvCompletion(&wc));
+    ibv_wc wc[2];
+    expectPositive(pollRecvCompletion(wc));
     
-    if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM && WRID_TASK(wc.wr_id) == SP_REMOTE_MR_RECV) {
+    if (wc->status != IBV_WC_SUCCESS) {
+        d_err("wc->status = %d", (int)wc->status);
+        exit(-1);
+    }
+    if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM && WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV) {
         auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
         if (msg->type == Message::MESG_REMOTE_MR) {
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
@@ -254,12 +259,11 @@ void RDMASocket::buildResources(ibv_context *ctx)
 
     this->ctx = ctx;
     expectNonZero(pd = ibv_alloc_pd(this->ctx));
-    for (int i = 0; i < MAX_CQS; ++i) {
-        expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
-        expectNonZero(cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel[i], 0));
-        expectZero(ibv_req_notify_cq(cq[i], 0));
-    }
-    cqSendPoller = std::thread(&RDMASocket::listenSendCQ, this);
+    expectNonZero(compChannel = ibv_create_comp_channel(this->ctx));
+    expectNonZero(cq = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel, 0));
+    expectZero(ibv_req_notify_cq(cq, 0));
+    
+    // cqSendPoller = std::thread(&RDMASocket::listenSendCQ, this);
     int mrFlags = IBV_ACCESS_LOCAL_WRITE |
                   IBV_ACCESS_REMOTE_READ |
                   IBV_ACCESS_REMOTE_WRITE |
@@ -274,9 +278,8 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     ibv_qp_init_attr qp_init_attr;
     memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
     qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.sq_sig_all = 1;
-    qp_init_attr.send_cq = cq[CQ_SEND];
-    qp_init_attr.recv_cq = cq[CQ_RECV];
+    qp_init_attr.send_cq = cq;
+    qp_init_attr.recv_cq = cq;
     qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_send_sge = 1;
@@ -299,7 +302,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
     /* Wait for remote MR */
-    postReceive(peerId, sizeof(Message), SP_REMOTE_MR_RECV);
+    postReceive(peerId, 0, SP_REMOTE_MR_RECV);
 }
 
 void RDMASocket::buildConnParam(rdma_conn_param *param)
@@ -328,21 +331,23 @@ void RDMASocket::destroyConnection(rdma_cm_id *cmId)
     rdma_destroy_id(cmId);
 }
 
-/* This function is expected to run as a single thread. */
+#if 0
 void RDMASocket::listenSendCQ()
 {
     ibv_cq *cq;
-    ibv_wc wc;
+    ibv_wc wc[2];
+    void *ctx;
 
     while (shouldRun) {
-        expectZero(ibv_get_cq_event(compChannel[CQ_SEND], &cq, nullptr));
+        expectZero(ibv_get_cq_event(compChannel[CQ_SEND], &cq, &ctx));
         ibv_ack_cq_events(cq, 1);
         expectZero(ibv_req_notify_cq(cq, 0));
 
-        while (ibv_poll_cq(cq, 1, &wc))
-            onSendCompletion(&wc);
+        while (ibv_poll_cq(cq, 1, wc))
+            onSendCompletion(wc);
     }
 }
+#endif
 
 /* Show the QP status with the designated peer. */
 void RDMASocket::verboseQP(int peerId)
@@ -468,7 +473,7 @@ uint32_t RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t loc
         wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
         wr.imm_data = imm;
     }
-    wr.send_flags = IBV_SEND_SIGNALED;
+    //wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteDstShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
@@ -503,7 +508,7 @@ uint32_t RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t loca
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_RDMA_READ;
-    wr.send_flags = IBV_SEND_SIGNALED;
+    //wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteSrcShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
@@ -511,7 +516,7 @@ uint32_t RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t loca
     return taskId;
 }
 
-/* Blockingly, statefully poll for next CQE in recv CQ. */
+/* Blockingly, statefully poll for next CQE in CQ. */
 int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
     static ibv_cq *cq = nullptr;
@@ -519,12 +524,10 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 
     while (true) {
         if (!cq) {
-            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, &ctx));
+            expectZero(ibv_get_cq_event(compChannel, &cq, &ctx));
             ibv_ack_cq_events(cq, 1);
             expectZero(ibv_req_notify_cq(cq, 0));
         }
-
-        d_info("cq event got, cq: %p", cq);
 
         int ret = ibv_poll_cq(cq, 1, wc);
         if (!ret)

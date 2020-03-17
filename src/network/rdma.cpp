@@ -201,7 +201,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
         d_err("wc->status = %d", (int)wc->status);
         exit(-1);
     }
-    if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM && WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV) {
+    if (WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV) {
         auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
         if (msg->type == Message::MESG_REMOTE_MR) {
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));

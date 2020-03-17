@@ -6,6 +6,7 @@
 #include <config.hpp>
 #include <debug.hpp>
 #include <rdma.hpp>
+#include <alloctable.hpp>
 
 RDMASocket::RDMASocket()
 {
@@ -27,6 +28,8 @@ RDMASocket::RDMASocket()
         peers[i].qp = nullptr;
         peers[i].sendMR = nullptr;
         peers[i].recvMR = nullptr;
+        peers[i].writeMR = nullptr;
+        peers[i].readMR = nullptr;
         peers[i].sendRegion = nullptr;
         peers[i].recvRegion = nullptr;
         peers[i].connected = false;
@@ -79,12 +82,9 @@ RDMASocket::~RDMASocket()
 {
     stopListenerAndJoin();
 
-    for (int i = 0; i < MAX_NODES; ++i) {
-        if (peers[i].qp) 
-            ibv_destroy_qp(peers[i].qp);
+    for (int i = 0; i < MAX_NODES; ++i)
         if (peers[i].cmId)
-            rdma_destroy_id(peers[i].cmId);
-    }
+            destroyConnection(peers[i].cmId);
     for (int i = 0; i < MAX_CQS; ++i) {
         if (cq[i])
             ibv_destroy_cq(cq[i]);
@@ -267,10 +267,14 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     peer->connected = false;
     peer->sendRegion = new uint8_t[RDMA_BUF_SIZE];
     peer->recvRegion = new uint8_t[RDMA_BUF_SIZE];
+    peer->writeRegion = new uint8_t[Block4K::capacity];
+    peer->readRegion = new uint8_t[Block4K::capacity];
 
     expectNonZero(peer->sendMR = ibv_reg_mr(pd, peer->sendRegion, RDMA_BUF_SIZE, 0));
     expectNonZero(peer->recvMR = ibv_reg_mr(pd, peer->recvRegion, RDMA_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE));
-    
+    expectNonZero(peer->writeMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, 0));
+    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, IBV_ACCESS_LOCAL_WRITE));
+
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
     /* Wait for remote MR */
@@ -296,8 +300,15 @@ void RDMASocket::destroyConnection(rdma_cm_id *cmId)
     
     ibv_dereg_mr(peers[peerId].sendMR);
     ibv_dereg_mr(peers[peerId].recvMR);
+    ibv_dereg_mr(peers[peerId].writeMR);
+    ibv_dereg_mr(peers[peerId].readMR);
+
     delete[] peers[peerId].sendRegion;
     delete[] peers[peerId].recvRegion;
+    delete[] peers[peerId].writeRegion;
+    delete[] peers[peerId].readRegion;
+
+    cm2id.erase((uint64_t)cmId);
 
     rdma_destroy_qp(cmId);
     rdma_destroy_id(cmId);
@@ -399,7 +410,7 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localSrc;
     sge.length = length;
-    sge.lkey = mr->lkey;
+    sge.lkey = peers[peerId].writeMR->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
     wr.wr_id = WRID(peerId, 0);
@@ -432,7 +443,7 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localDst;
     sge.length = length;
-    sge.lkey = mr->lkey;
+    sge.lkey = peers[peerId].readMR->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
     wr.wr_id = WRID(peerId, taskId);

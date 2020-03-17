@@ -49,8 +49,8 @@ public:
             exit(-1);
         }
 
-        auto *area = reinterpret_cast<uint8_t *>(memConf->getDataArea());
-        uint64_t areaSize = memConf->getDataAreaCapacity();
+        auto *area = reinterpret_cast<uint8_t *>(memConf->getMemory());
+        uint64_t areaSize = memConf->getCapacity();
         bool shouldInit = true;
 
         if (((uint64_t)area) % 8 != 0) {

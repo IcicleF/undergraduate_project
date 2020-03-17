@@ -37,10 +37,14 @@ struct RDMAConnection
 
     ibv_mr *sendMR;                     /* Send Region MR */
     ibv_mr *recvMR;                     /* Recv Region MR */
+    ibv_mr *writeMR;                    /* Write Region MR */
+    ibv_mr *readMR;                     /* Read Region MR */
     ibv_mr peerMR;                      /* MR of peer */
     
     uint8_t *sendRegion;                /* Send Region: allocated */
     uint8_t *recvRegion;                /* Recv Region: allocated */
+    uint8_t *writeRegion;               /* Write Region: allocated */
+    uint8_t *readRegion;                /* Read Region: allocated */
 };
 
 /* Predeclaration for RDMASocket to befriend it */
@@ -70,6 +74,11 @@ public:
     void postReceive(int peerId, uint64_t length, int specialTaskId = 0);
     void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
     void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0);
+
+    __always_inline uint8_t *getSendRegion(int peerId) { return peers[peerId].sendRegion; }
+    __always_inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
+    __always_inline uint8_t *getWriteRegion(int peerId) { return peers[peerId].writeRegion; }
+    __always_inline uint8_t *getReadRegion(int peerId) { return peers[peerId].readRegion; }
 
     int pollSendCompletion(ibv_wc *wc);
     int pollRecvCompletion(ibv_wc *wc);

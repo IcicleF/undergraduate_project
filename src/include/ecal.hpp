@@ -65,7 +65,7 @@ private:
     uint8_t encodeMatrix[N * K];
     uint8_t gfTables[K * P * 32];
     uint8_t encodeBuffer[P * BlockTy::capacity];
-    uint8_t *parity[P];
+    uint8_t *parity[P];                             /* Points to encodeBuffer */
 
     __always_inline DataPosition getDataPos(uint64_t index)
     {
@@ -74,7 +74,7 @@ private:
     }
     __always_inline uint64_t getBlockShift(uint64_t index)
     {
-        return memConf->getDataAreaShift() + allocTable->getShift(index);
+        return allocTable->getShift(index);
     }
 };
 

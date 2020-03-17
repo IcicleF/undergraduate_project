@@ -82,36 +82,21 @@ private:
 class MemoryConfig
 {
 public:
-    explicit MemoryConfig(uint64_t base, uint64_t capacity);
+    explicit MemoryConfig(uint64_t base, uint64_t capacity) : base(base), capacity(capacity) { }
     explicit MemoryConfig(const CmdLineConfig &conf);
     ~MemoryConfig() = default;
 
     __always_inline void fullSync() const { msync((void *)base, capacity, MS_SYNC); }
-    __always_inline void fullDataSync() const { msync((void *)dataArea, dataAreaCapacity, MS_SYNC); }
-    
+
     __always_inline void *getMemory() const { return (void *)base; }
-    __always_inline void *getSendBuffer(int peerId) const { return (void *)(sendBufferBase + RDMA_BUF_SIZE * peerId); }
-    __always_inline void *getReceiveBuffer(int peerId) const { return (void *)(recvBufferBase + RDMA_BUF_SIZE * peerId); }
-    __always_inline void *getDataArea() const { return (void *)dataArea; }
-
-    __always_inline uint64_t getSendBufferShift(int peerId) const { return (uint64_t)getSendBuffer(peerId) - base; }
-    __always_inline uint64_t getReceiveBufferShift(int peerId) const { return (uint64_t)getReceiveBuffer(peerId) - base; }
-    __always_inline uint64_t getDataAreaShift() const { return (uint64_t)getDataArea() - base; }
-
     __always_inline uint64_t getCapacity() const { return capacity; }
-    __always_inline uint64_t getDataAreaCapacity() const { return dataAreaCapacity; }
 
 private:
     void calcBaseAddresses();
 
 private:
     uint64_t base = 0;
-    uint64_t sendBufferBase = 0;
-    uint64_t recvBufferBase = 0;
-    uint64_t dataArea = 0;
-
     uint64_t capacity = 0;
-    uint64_t dataAreaCapacity = 0;
 
     int fd = -1;
 };

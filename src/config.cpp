@@ -109,12 +109,6 @@ NodeConfig ClusterConfig::findMyself() const
 
 // MemoryConfig part
 
-MemoryConfig::MemoryConfig(uint64_t base, uint64_t capacity)
-        : base(base), capacity(capacity)
-{
-    calcBaseAddresses();
-}
-
 /*
  * Initializes from command line arguments.
  * Creates memory mapping for the pmem device specified.
@@ -139,20 +133,4 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
 
     capacity = conf.pmemSize;
     d_info("MemoryConfig: [%p, %p)", (void *)base, (void *)(base + capacity));
-    calcBaseAddresses();
-}
-
-void MemoryConfig::calcBaseAddresses()
-{
-    uint64_t srBufferSize = RDMA_BUF_SIZE * MAX_NODES;
-    
-    sendBufferBase = base;
-    recvBufferBase = sendBufferBase + srBufferSize;
-    dataArea = recvBufferBase + srBufferSize;
-    dataAreaCapacity = capacity - 2 * srBufferSize;
-    
-    if (dataAreaCapacity <= 0) {
-        dataAreaCapacity = 0;
-        d_err("NO SPACE FOR DATA!");
-    }
 }

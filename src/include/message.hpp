@@ -8,9 +8,7 @@
 
 enum SpecialWRType
 {
-    SP_REMOTE_MR_SEND = 1,
-    SP_REMOTE_MR_RECV,
-    SP_SYNC_SEND,
+    SP_REMOTE_MR_RECV = 1,
     SP_SYNC_RECV,
     SP_TYPES
 };

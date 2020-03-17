@@ -61,18 +61,11 @@ RDMASocket::RDMASocket(HashTable *hashTable)
         freeaddrinfo(ai);
     }
 
-    int expectedConns = 0;
-    for (int i = 0; i < clusterConf->getClusterSize(); ++i)
-        if ((*clusterConf)[i].id > myNodeConf->id)
-            ++expectedConns;
-
     ecPoller = std::thread(&RDMASocket::listenRDMAEvents, this);
 
-    d_info("expect %d incoming connections", expectedConns);
-    if (expectedConns) {
-        d_info("start waiting...");
-        while (incomingConns < expectedConns) ;
-    }
+    d_info("start waiting...");
+    int expectedConns = clusterConf->getClusterSize() - 1;
+    while (incomingConns < expectedConns) ;
 
     d_info("successfully created RDMASocket!");
 }
@@ -207,7 +200,8 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
             peer->connected = true;    
             d_info("successfully connected with peer: %d", peer->peerId);
-        }
+            ++incomingConns;
+	}
         else {
             d_err("RDMA recv intended for MR received some other thing");
             exit(-1);

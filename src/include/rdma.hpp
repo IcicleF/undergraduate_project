@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <condition_variable>
 
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
@@ -116,6 +117,9 @@ private:
 
     bool shouldRun;                         /* Stop threads if false */
     int incomingConns = 0;                  /* Incoming successful connections count */
+
+    std::mutex stopSpinMutex;               /* To stop ctor from spinning */
+    std::condition_variable ssmCondVar;     /* To stop ctor from spinning */
 };
 
 #define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))

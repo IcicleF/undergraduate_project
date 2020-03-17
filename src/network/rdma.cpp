@@ -65,7 +65,13 @@ RDMASocket::RDMASocket(HashTable *hashTable)
 
     d_info("start waiting...");
     int expectedConns = clusterConf->getClusterSize() - 1;
-    while (incomingConns < expectedConns) ;
+    
+    std::unique_lock<std::mutex> lock(stopSpinMutex);
+    //ssmCondVar.wait(lock, [&, this](){ return this->incomingConns > expectedConns; });
+    while (incomingConns < expectedConns) {
+        ssmCondVar.wait(lock);
+        d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
+    }
 
     d_info("successfully created RDMASocket!");
 }
@@ -200,8 +206,13 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
             peer->connected = true;    
             d_info("successfully connected with peer: %d", peer->peerId);
+
             ++incomingConns;
-	}
+            {
+                std::unique_lock<std::mutex> lock(stopSpinMutex);
+                ssmCondVar.notify_one();
+            }
+        }
         else {
             d_err("RDMA recv intended for MR received some other thing");
             exit(-1);

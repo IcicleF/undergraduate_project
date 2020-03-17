@@ -42,7 +42,7 @@
 
 #define ADDR_RESOLVE_TIMEOUT    3000
 #define MAX_REQS                16
-#define MAX_QP_DEPTH            64
+#define MAX_QP_DEPTH            1024
 #define MAX_DEST_RD_ATOMIC      16
 #define MAX_CQS                 2
 #define CQ_SEND                 0

@@ -1,111 +1,125 @@
+/*
+ * rdma.hpp
+ * 
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University
+ * 
+ * Defines an RDMA interface to support RDMA send/recv/write/read primitives.
+ * It hides RDMA details from users and notify user WR results with a hash table. 
+ */
+
 #if !defined(RDMA_HPP)
 #define RDMA_HPP
 
 #include <unistd.h>
 #include <inttypes.h>
-#include <endian.h>
 #include <byteswap.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
-#include <infiniband/verbs.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <condition_variable>
+
+#include <infiniband/verbs.h>
+#include <rdma/rdma_cma.h>
 
 #include "config.hpp"
+#include "message.hpp"
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#define htonll(x) bswap_64((uint64_t)(x))
-#define ntohll(x) bswap_64((uint64_t)(x))
-#elif __BYTE_ORDER == __BIG_ENDIAN
-#define htonll(x) ((uint64_t)(x))
-#define ntohll(x) ((uint64_t)(x))
-#else
-#error __BYTE_ORDER is neither __LITTLE_ENDIAN nor __BIG_ENDIAN
-#endif
-
-/* Structure to exchange data which is needed to connect the QPs */
-struct ConnInfo
+/* Store necessary information for a connection with a peer. */
+struct RDMAConnection
 {
-    uint64_t baseAddr;                  /* REMOTE RDMA buffer (memConf->base)
-                                           Use `baseAddr` for RDMA read/write */
-    uint32_t nodeId;                    /* Remote Node ID */
-    uint32_t rkey;                      /* Remote key */
-    uint32_t qpn;                       /* QP number */
-    uint16_t lid;                       /* LID of the IB port */
-} __packed;
+    int peerId;
+    bool connected;
 
-/* Store the RDMA connection data with a peer */
-struct PeerInfo
-{
-    union
-    {
-        ConnInfo connInfo;              /* Connection info received from peer */
-        struct                          /* Provide direct access to `connInfo` members */
-        {
-            uint64_t baseAddr;
-            uint32_t nodeId;
-            uint32_t rkey;
-            uint32_t qpn;
-            uint16_t lid;
-        } __packed;
-    } __packed;
+    rdma_cm_id *cmId;                   /* CM: allocated */
+    ibv_qp *qp;                         /* QP: allocated */
 
-    ibv_qp *qp = nullptr;               /* QP handle */
-    ibv_cq *cq = nullptr;               /* CQ handle */
-    int sock;                           /* TCP socket */
-    void *sendBuf = nullptr;            /* LOCAL RDMA send buffer */
-    void *recvBuf = nullptr;            /* LOCAL RDMA receive buffer */
+    ibv_mr *sendMR;                     /* Send Region MR */
+    ibv_mr *recvMR;                     /* Recv Region MR */
+    ibv_mr *writeMR;                    /* Write Region MR */
+    ibv_mr *readMR;                     /* Read Region MR */
+    ibv_mr peerMR;                      /* MR of peer */
+    
+    uint8_t *sendRegion;                /* Send Region: allocated */
+    uint8_t *recvRegion;                /* Recv Region: allocated */
+    uint8_t *writeRegion;               /* Write Region: allocated */
+    uint8_t *readRegion;                /* Read Region: allocated */
 };
 
-/* Store all necessary resources for RDMA connection with other nodes */
+/* Predeclaration for RDMASocket to befriend it */
+class RPCInterface;
+
+/*
+ * Store all necessary resources for RDMA connection with other nodes.
+ * 
+ * RDMASocket uses RDMA CM APIs to build RDMA reliable connections (RCs) with peers.
+ * TCP must be available for the RDMA CM to build connections.
+ */
 class RDMASocket
 {
+    friend class RPCInterface;
+
 public:
     explicit RDMASocket();
+    ~RDMASocket();
     RDMASocket(const RDMASocket &) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;
-    ~RDMASocket();
 
-    int createResources();
-    void disposeResources();
-
-    int rdmaConnect(int peerId);
     void verboseQP(int peerId);
+    bool isPeerAlive(int peerId);
+    void stopListenerAndJoin();
 
-    int postSend(int peerId, uint64_t localSrc, uint64_t length);
-    int postReceive(int peerId, uint64_t length);
-    int postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
-    int postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length);
+    void postSend(int peerId, uint64_t length);
+    void postReceive(int peerId, uint64_t length, int specialTaskId = 0);
+    void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
+    void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0);
 
-    int pollCompletion(ibv_wc *wc);
-    int pollOnce(ibv_wc *wc);
+    __always_inline uint8_t *getSendRegion(int peerId) { return peers[peerId].sendRegion; }
+    __always_inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
+    __always_inline uint8_t *getWriteRegion(int peerId) { return peers[peerId].writeRegion; }
+    __always_inline uint8_t *getReadRegion(int peerId) { return peers[peerId].readRegion; }
 
-private:
-    int socketExchangeData(int sock, int size, void *localData, void *remoteData);
-    int socketConnect(int peerId);
-    int createQP(PeerInfo *peer);
-    int connectQP(PeerInfo *peer);
-    int modifyQPtoInit(PeerInfo *peer);
-    int modifyQPtoRTR(PeerInfo *peer);
-    int modifyQPtoRTS(PeerInfo *peer);
-
-    void rdmaAccept(int sock);
-    int rdmaListen(int port);
+    int pollSendCompletion(ibv_wc *wc);
+    int pollRecvCompletion(ibv_wc *wc);
 
 private:
-    struct
-    {
-        ibv_device_attr deviceAttr;         /* Device attributes */
-        ibv_port_attr portAttr;             /* IB port attributes */
-        ibv_context *context = nullptr;     /* device handle */
-        ibv_pd *pd = nullptr;               /* PD handle */
-        ibv_cq *cq = nullptr;               /* CQ handle */
-        ibv_mr *mr = nullptr;               /* MR handle */
+    void listenRDMAEvents();
+    void onAddrResolved(rdma_cm_event *event);
+    void onRouteResolved(rdma_cm_event *event);
+    void onConnectionRequest(rdma_cm_event *event);
+    void onConnectionEstablished(rdma_cm_event *event);
+    void onDisconnected(rdma_cm_event *event);
+    void onSendCompletion(ibv_wc *wc);
 
-        PeerInfo peers[MAX_NODES];          /* Peer connections */
-    } rs;
-    std::thread rdmaListener;
+    void buildResources(ibv_context *ctx);
+    void buildConnection(rdma_cm_id *cmId);
+    void buildConnParam(rdma_conn_param *param);
+    void destroyConnection(rdma_cm_id *cmId);
+
+    ibv_context *ctx = nullptr;
+    ibv_pd *pd = nullptr;                   /* Common protection domain */
+    ibv_mr *mr = nullptr;                   /* Common memory region */
+    ibv_cq *cq[MAX_CQS];                    /* [0]: send CQ; [1]: recv CQ */
+    ibv_comp_channel *compChannel[MAX_CQS]; /* [0]: send channel; [1]: recv channel */
+
+    rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
+    rdma_cm_id *listener = nullptr;         /* RDMA listener */
+    std::thread ecPoller;                   /* listenRDMAEvents thread */
+
+    RDMAConnection peers[MAX_NODES];        /* Peer connections */
+    std::map<uint64_t, int> cm2id;          /* Map rdma_cm_id pointer to peer */
+    uint32_t nodeIDBuf;                     /* Send my node ID on connection */
+
+    bool shouldRun;                         /* Stop threads if false */
+    int incomingConns = 0;                  /* Incoming successful connections count */
+
+    std::mutex stopSpinMutex;               /* To stop ctor from spinning */
+    std::condition_variable ssmCondVar;     /* To stop ctor from spinning */
 };
+
+#define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))
+#define WRID_PEER(id)   ((int)(((id) >> 32) & 0xFFFFFFFF))
+#define WRID_TASK(id)   ((uint32_t)((id) & 0xFFFFFFFF))
 
 #endif // RDMA_HPP

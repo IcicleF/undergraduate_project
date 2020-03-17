@@ -19,43 +19,37 @@ public:
     explicit RPCInterface();
     ~RPCInterface();
 
-    void __markAsAlive(int peerId) { peerIsAlive[peerId] = true; }
-    void __markAsDead(int peerId) { peerIsAlive[peerId] = false; }
-    bool isAlive(int peerId) { return peerIsAlive[peerId]; }
+    __always_inline void __markAsAlive(int peerId) { peerAliveStatus[peerId] = 1; }
+    __always_inline void __markAsDead(int peerId) { peerAliveStatus[peerId] = -1; }
+    __always_inline void __cancelMarking(int peerId) { peerAliveStatus[peerId] = 0; }
 
-    int remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
+    bool isPeerAlive(int peerId);
+    void stopListenerAndJoin();
+    void syncAmongPeers();
+
+    __always_inline
+    void remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0)
     {
-        if (socket)
-            return socket->postRead(peerId, remoteSrcShift, localDst, length);
-        return -1;
+        socket->postRead(peerId, remoteSrcShift, localDst, length, taskId);
     }
-    int remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
+    __always_inline
+    void remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
     {
-        if (socket)
-            return socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
-        return -1;
+        socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
     }
     
     void rpcListen();
-    int rpcProcessCall(int peerId, const RPCMessage *message, RPCMessage *response);
-    int remoteRPCCall(int peerId, const RPCMessage *request, RPCMessage *response);
+    int rpcProcessCall(int peerId, const Message *message, Message *response);
+    int remoteRPCCall(int peerId, const Message *request, Message *response);
 
     __always_inline RDMASocket *getRDMASocket() const { return socket; }
-    __always_inline void registerAllocTable(AllocationTable<BlockTy> *allocTable)
-    {
-        this->allocTable = allocTable;
-    }
 
 private:
     RDMASocket *socket = nullptr;
-    std::atomic<uint64_t> taskId;
     std::thread rpcListener;
 
-    AllocationTable<BlockTy> *allocTable;
-    std::unordered_map<int, bool> peerIsAlive;
-
-    uint64_t remoteAllocBlock(int peerId);
-    int remoteDeallocBlock(int peerId, uint64_t addr);
+    short peerAliveStatus[MAX_NODES];
+    bool shouldRun;
 };
 
 #endif // RPC_HPP

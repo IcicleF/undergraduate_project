@@ -1,31 +1,44 @@
 #if !defined(MESSAGE_HPP)
 #define MESSAGE_HPP
 
-#include "common.hpp"
+#include <infiniband/verbs.h>
+#include <rdma/rdma_cma.h>
 
-#define RPC_ALLOC               0x00000001
-#define RPC_DEALLOC             0x00000002
-#define RPC_HEARTBEAT           0x10000001
-#define RPC_DISCONNECT          0x10000002
-#define RPC_TEST                0x70000001
-#define RPC_NOT_IMPL            0x77777777
+#include "commons.hpp" 
 
-#define RPC_RESPONSE            0x80000000
-#define RPC_RESPONSE_ACK        0x80000001
-#define RPC_RESPONSE_NAK        0x80000002
-#define RPC_FAILED              0xF0000000
-
-union RPCMessage
+enum SpecialWRType
 {
-    uint8_t rawData[32];
+    SP_REMOTE_MR_RECV = 1,
+    SP_SYNC_RECV,
+    SP_TYPES
+};
 
-    struct
-    {
-        uint64_t type;
-        uint64_t uid;
-        uint64_t count;
-        uint64_t addr;
-    };
+struct RPCMessage
+{
+    enum {
+        RPC_UNDEF = 0,
+        RPC_REQUEST,
+        RPC_RESPONSE,
+        RPC_INVALID
+    } type;
+};
+
+struct Message
+{
+    enum {
+        MESG_UNDEF = 0,
+        MESG_REMOTE_MR,
+        MESG_RPC_CALL,
+        MESG_RPC_RESPONSE,
+        MESG_SYNC_REQUEST,
+        MESG_SYNC_RESPONSE,
+        MESG_INVALID
+    } type;
+
+    union {
+        ibv_mr mr;
+        RPCMessage rpc;
+    } data;
 };
 
 #endif // MESSAGE_HPP

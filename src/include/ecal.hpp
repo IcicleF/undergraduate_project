@@ -40,10 +40,12 @@ public:
     explicit ECAL();
     ~ECAL();
     
-    Page readBlock(uint64_t index);
-    void writeBlock(Page page);
+    void readBlock(uint64_t index, Page &page);
+    void writeBlock(Page &page);
 
-    /* Returns the cluster's capacity in 4KB BLOCKS */
+    __always_inline RPCInterface *getRPCInterface() const { return rpcInterface; }
+
+    /* Returns the cluster's capacity in 4kB blocks */
     __always_inline uint64_t getClusterCapacity() const { return capacity; }
 
 private:
@@ -63,7 +65,7 @@ private:
     uint8_t encodeMatrix[N * K];
     uint8_t gfTables[K * P * 32];
     uint8_t encodeBuffer[P * BlockTy::capacity];
-    uint8_t *parity[P];
+    uint8_t *parity[P];                             /* Points to encodeBuffer */
 
     __always_inline DataPosition getDataPos(uint64_t index)
     {
@@ -72,7 +74,7 @@ private:
     }
     __always_inline uint64_t getBlockShift(uint64_t index)
     {
-        return memConf->getDataAreaShift() + allocTable->getShift(index);
+        return allocTable->getShift(index);
     }
 };
 

@@ -6,37 +6,73 @@
 #include <config.hpp>
 #include <debug.hpp>
 #include <rdma.hpp>
+#include <alloctable.hpp>
 
 RDMASocket::RDMASocket()
 {
-    if (cmdConf == nullptr || clusterConf == nullptr || memConf == nullptr || myNodeConf == nullptr) {
+    if (!cmdConf || !clusterConf || !memConf || !myNodeConf) {
         d_err("all configurations should be initialized!");
         exit(-1);
     }
 
-    if (createResources() < 0) {
-        d_err("failed to create resources");
-        exit(-1);
+    shouldRun = true;
+    nodeIDBuf = myNodeConf->id;
+
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(sockaddr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(cmdConf->tcpPort);
+
+    for (int i = 0; i < MAX_NODES; ++i) {
+        peers[i].cmId = nullptr;
+        peers[i].qp = nullptr;
+        peers[i].sendMR = nullptr;
+        peers[i].recvMR = nullptr;
+        peers[i].writeMR = nullptr;
+        peers[i].readMR = nullptr;
+        peers[i].sendRegion = nullptr;
+        peers[i].recvRegion = nullptr;
+        peers[i].connected = false;
     }
 
-    int nodeCount = clusterConf->getClusterSize();
-    for (int i = 0; i < nodeCount; ++i) {
-        NodeConfig nodeConf = (*clusterConf)[i];
-        if (nodeConf.id >= myNodeConf->id)
+    expectNonZero(ec = rdma_create_event_channel());
+    expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
+    expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
+    expectZero(rdma_listen(listener, MAX_NODES));
+
+    int port = ntohs(rdma_get_src_port(listener));
+    expectTrue(port == cmdConf->tcpPort);
+    d_info("listening on port: %d", port);
+
+    char portStr[16];
+    snprintf(portStr, 16, "%d", port);
+
+    /* Connect to all peers with id < myId */
+    for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+        auto peerNode = (*clusterConf)[i];
+        if (peerNode.id >= myNodeConf->id)
             continue;
-        if (nodeConf.type == NODE_CLI && myNodeConf->type == NODE_CLI)
-            continue;
-        if (rdmaConnect(nodeConf.id) < 0) {
-            d_err("failed to connect with peer: %d", nodeConf.id);
-            exit(-1);
-        }
-        else
-            d_info("successfully connected with peer: %d", nodeConf.id);
+
+        addrinfo *ai;
+        getaddrinfo(peerNode.ibDevIPAddrStr.c_str(), portStr, nullptr, &ai);
+
+        expectZero(rdma_create_id(ec, &peers[i].cmId, nullptr, RDMA_PS_TCP));
+        cm2id[(uint64_t)peers[i].cmId] = i;
+        expectZero(rdma_resolve_addr(peers[i].cmId, nullptr, ai->ai_addr, ADDR_RESOLVE_TIMEOUT));
+
+        freeaddrinfo(ai);
     }
 
-    if (rdmaListen(cmdConf->tcpPort) < 0) {
-        d_err("failed to listen incoming RDMA connections");
-        exit(-1);
+    ecPoller = std::thread(&RDMASocket::listenRDMAEvents, this);
+
+    d_info("start waiting...");
+    int expectedConns = clusterConf->getClusterSize() - 1;
+    
+    std::unique_lock<std::mutex> lock(stopSpinMutex);
+    //ssmCondVar.wait(lock, [&, this](){ return this->incomingConns > expectedConns; });
+    while (incomingConns < expectedConns) {
+        ssmCondVar.wait(lock);
+        d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
     }
 
     d_info("successfully created RDMASocket!");
@@ -44,229 +80,251 @@ RDMASocket::RDMASocket()
 
 RDMASocket::~RDMASocket()
 {
-    disposeResources();
-}
+    stopListenerAndJoin();
 
-/*
- * Initialize necessary resources for all RDMA connections.
- * This function must be called before any other RDMA operations through this class.
- * 
- * Also, we recommend calling this function on ONLY ONE RDMASocket instance. 
- */
-int RDMASocket::createResources()
-{
-    ibv_device **devList = nullptr;
-    ibv_device *ibDev = nullptr;
-    ibv_device_attr devAttr;
-    int ret = 0;
-
-    memset(&rs, 0, sizeof(rs));
-
-    /* The do-while loop is executed only once and is used to avoid gotos */
-    do {
-        /* Find the desired IB device */
-        int numDevices = 0;
-        devList = ibv_get_device_list(&numDevices);
-        if (devList == nullptr) {
-            d_err("failed to get IB device list");
-            ret = -1;
-            break;
-        }
-        if (numDevices == 0) {
-            d_err("cannot find any IB devices");
-            ret = -1;
-            break;
-        }
-        
-        int i;
-        for (i = 0; i < numDevices; ++i) {
-            const char *devName = ibv_get_device_name(devList[i]);
-            if (cmdConf->ibDeviceName == nullptr) {
-                d_warn("IB device not specified, use the first one found: %s", devName);
-                break;
-            }
-            if (strcmp(cmdConf->ibDeviceName, devName) == 0)
-                break;
-        }
-        if (i >= numDevices) {
-            d_err("IB device not found: %s", cmdConf->ibDeviceName);
-            ret = -1;
-            break;
-        }
-        
-        ibDev = devList[i];
-        
-        rs.context = ibv_open_device(ibDev);
-        if (rs.context == nullptr) {
-            d_err("failed to open IB device: %s", ibv_get_device_name(ibDev));
-            ret = -1;
-            break;
-        }
-        
-        /* Done with device list, free it */
-        ibv_free_device_list(devList);
-        devList = nullptr;
-        ibDev = nullptr;
-        
-        /* Query device properties */
-        if (ibv_query_device(rs.context, &devAttr) != 0) {
-            d_err("failed to query device capabilities");
-            ret = -1;
-            break;
-        }
-        d_info("device max_cq = %d", devAttr.max_cq);
-        d_info("device max_cqe = %d", devAttr.max_cqe);
-        d_info("device max_raw_ethy_qp = %d", devAttr.max_raw_ethy_qp);
-
-        if (ibv_query_port(rs.context, cmdConf->ibPort, &rs.portAttr) != 0) {
-            d_err("failed to query IB port: %d", cmdConf->ibPort);
-            ret = -1;
-            break;
-        }
-        
-        /* Allocate PD, CQ, MR */
-        rs.pd = ibv_alloc_pd(rs.context);
-        if (rs.pd == nullptr) {
-            d_err("failed to allocate PD");
-            ret = -1;
-            break;
-        }
-        
-        rs.cq = ibv_create_cq(rs.context, MAX_QP_DEPTH, nullptr, nullptr, 0);
-        if (rs.cq == nullptr) {
-            d_err("failed to create CQ (%u entries)", MAX_QP_DEPTH);
-            ret = -1;
-            break;
-        }
-        
-        auto *memAddr = memConf->getMemory();
-        auto memSize = memConf->getCapacity();
-        int mrFlags = IBV_ACCESS_LOCAL_WRITE |
-                      IBV_ACCESS_REMOTE_READ |
-                      IBV_ACCESS_REMOTE_WRITE |
-                      IBV_ACCESS_REMOTE_ATOMIC;
-        rs.mr = ibv_reg_mr(rs.pd, memAddr, memSize, mrFlags);
-        if (rs.mr == nullptr) {
-            d_err("failed to register MR (addr=%p, size=%lu, flags=0x%x)", memAddr, memSize, mrFlags);
-            ret = -1;
-            break;
-        }
-
-        /* Initialize TCP sockets */
-        for (i = 0; i < MAX_NODES; ++i)
-            rs.peers[i].sock = -1;
-    } while (0);
-
-    if (ret != 0) {
-        /* Error occured, cleanup in reversed order */
-        if (rs.mr) {
-            ibv_dereg_mr(rs.mr);
-            rs.mr = nullptr;
-        }
-        if (rs.cq) {
-            ibv_destroy_cq(rs.cq);
-            rs.cq = nullptr;
-        }
-        if (rs.pd) {
-            ibv_dealloc_pd(rs.pd);
-            rs.pd = nullptr;
-        }
-        if (rs.context) {
-            ibv_close_device(rs.context);
-            rs.context = nullptr;
-        }
-        if (devList) {
-            ibv_free_device_list(devList);
-            devList = nullptr;
-        }
+    for (int i = 0; i < MAX_NODES; ++i)
+        if (peers[i].cmId)
+            destroyConnection(peers[i].cmId);
+    for (int i = 0; i < MAX_CQS; ++i) {
+        if (cq[i])
+            ibv_destroy_cq(cq[i]);
+        if (compChannel[i])
+            ibv_destroy_comp_channel(compChannel[i]);
     }
-    return ret;
-}
-
-/*
- * Free all resources, including allocated memories, sockets and RDMA resources.
- * 
- * We recommend not to re-create the resources after disposing them.
- */
-void RDMASocket::disposeResources()
-{
-    for (int i = 0; i < MAX_NODES; ++i) {
-        auto *peer = &rs.peers[i];
-        if (peer->sock > 0) {
-            close(peer->sock);
-            peer->sock = -1;
-        }
-        if (peer->qp) {
-            ibv_destroy_qp(peer->qp);
-            peer->qp = nullptr;
-        }
-    }
-
-    if (rs.mr) {
-        ibv_dereg_mr(rs.mr);
-        rs.mr = nullptr;
-    }
-    if (rs.cq) {
-        ibv_destroy_cq(rs.cq);
-        rs.cq = nullptr;
-    }
-    if (rs.pd) {
-        ibv_dealloc_pd(rs.pd);
-        rs.pd = nullptr;
-    }
-    if (rs.context) {
-        ibv_close_device(rs.context);
-        rs.context = nullptr;
-    }
-
-    d_info("successfully destroyed RDMA resources");
-}
-
-/*
- * Actively establish an RDMA connection with the designated peer.
- */
-int RDMASocket::rdmaConnect(int peerId)
-{
-    PeerInfo *peer = &rs.peers[peerId];
-    peer->sock = socketConnect(peerId);
-    if (peer->sock < 0) {
-        d_err("failed to connect socket");
-        return -1;
-    }
-
-    /* peer.qp, peer.cq are now valid */
-    if (createQP(peer) < 0) {
-        d_err("failed to create QP");
-        return -1;
-    }
-    /* peer.connInfo is now valid */
-    if (connectQP(peer) < 0) {
-        d_err("failed to connect QP");
-        return -1;
-    }
-
-    peer->sendBuf = memConf->getSendBuffer(peer->nodeId);
-    peer->recvBuf = memConf->getReceiveBuffer(peer->nodeId);
-    postReceive(peerId, 0);
-
-    d_info("successfully built RDMA connection with peer: %d", peer->connInfo.nodeId);
     
-    return 0;
+    if (mr)
+        ibv_dereg_mr(mr);
+    if (pd)
+        ibv_dealloc_pd(pd);
+    if (listener)
+        rdma_destroy_id(listener);
+    if (ec)
+        rdma_destroy_event_channel(ec);
 }
 
-/*
- * Show the QP status with the designated peer.
- */
+/* Stop all listener threads and join them to the current thread */
+void RDMASocket::stopListenerAndJoin()
+{
+    if (std::this_thread::get_id() != mainThreadId) {
+        d_err("cannot execute stopListenerAndJoin from non-main threads");
+        return;
+    }
+    if (!shouldRun)
+        return;
+
+    shouldRun = false;
+    if (ecPoller.joinable())
+        ecPoller.join();
+    
+    d_info("all joinable listener threads have joined");
+}
+
+/* This function is expected to run as a single thread. */
+void RDMASocket::listenRDMAEvents()
+{
+    typedef void (RDMASocket:: *EventHandler)(rdma_cm_event *);
+    static EventHandler handlers[16] = { nullptr };
+    handlers[RDMA_CM_EVENT_ADDR_RESOLVED] = &RDMASocket::onAddrResolved;
+    handlers[RDMA_CM_EVENT_ROUTE_RESOLVED] = &RDMASocket::onRouteResolved;
+    handlers[RDMA_CM_EVENT_CONNECT_REQUEST] = &RDMASocket::onConnectionRequest;
+    handlers[RDMA_CM_EVENT_ESTABLISHED] = &RDMASocket::onConnectionEstablished;
+    handlers[RDMA_CM_EVENT_DISCONNECTED] = &RDMASocket::onDisconnected;
+
+    rdma_cm_event *event;
+    while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
+        EventHandler handler = handlers[event->event];
+        if (handler)
+            (this->*handler)(event);
+        else
+            d_warn("RDMA CM event type %d not handled", (int)event->event);
+        rdma_ack_cm_event(event);
+    }
+}
+
+/* As a client, handle when remote address is resolved */
+void RDMASocket::onAddrResolved(rdma_cm_event *event)
+{
+    buildConnection(event->id);
+    expectZero(rdma_resolve_route(event->id, ADDR_RESOLVE_TIMEOUT));
+}
+
+/* As a client, handle when connection route is resolved */
+void RDMASocket::onRouteResolved(rdma_cm_event *event)
+{
+    rdma_conn_param param;
+    buildConnParam(&param);
+    expectZero(rdma_connect(event->id, &param));
+}
+
+/* As a server, handle when an incoming connection request appears */
+void RDMASocket::onConnectionRequest(rdma_cm_event *event)
+{
+    auto *nodeIdBuf = reinterpret_cast<const uint32_t *>(event->param.conn.private_data);
+    cm2id[(uint64_t)event->id] = nodeIdBuf[0];
+    buildConnection(event->id);
+
+    rdma_conn_param param;
+    buildConnParam(&param);
+
+    expectZero(rdma_accept(event->id, &param));
+}
+
+/* As a server or client, handle when a connection is established */
+void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
+{
+    RDMAConnection *peer = peers + cm2id[(uint64_t)event->id];
+    expectTrue(peer == reinterpret_cast<RDMAConnection *>(event->id->context));
+
+    /* Send MR to peer */
+    auto *mrMsg = reinterpret_cast<Message *>(peer->sendRegion);
+    mrMsg->type = Message::MESG_REMOTE_MR;
+    memcpy(&mrMsg->data.mr, mr, sizeof(ibv_mr));
+    postSend(peer->peerId, sizeof(Message));
+
+    /*
+     * Immediately (and blockingly) poll this RDMA recv.
+     * Because the connection is already established, we expect not blocking very long.
+     */
+    ibv_wc wc[2];
+    expectPositive(pollRecvCompletion(wc));
+    
+    if (wc->status != IBV_WC_SUCCESS) {
+        d_err("wc->status = %d", (int)wc->status);
+        exit(-1);
+    }
+    if (WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV) {
+        auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
+        if (msg->type == Message::MESG_REMOTE_MR) {
+            memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
+            peer->connected = true;    
+            d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
+
+            ++incomingConns;
+            {
+                std::unique_lock<std::mutex> lock(stopSpinMutex);
+                ssmCondVar.notify_one();
+            }
+        }
+        else {
+            d_err("RDMA recv intended for MR received some other thing");
+            exit(-1);
+        }
+    }
+}
+
+/* As a server or client, handle when a connection is lost */
+void RDMASocket::onDisconnected(rdma_cm_event *event)
+{
+    destroyConnection(event->id);
+}
+
+void RDMASocket::buildResources(ibv_context *ctx)
+{
+    if (this->ctx) {
+        if (this->ctx != ctx)
+            d_err("more than one context...");
+        return;
+    }
+
+    d_info("resource bound to device: %s", ctx->device->name);
+
+    this->ctx = ctx;
+    expectNonZero(pd = ibv_alloc_pd(this->ctx));
+    for (int i = 0; i < MAX_CQS; ++i) {
+        expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
+        expectNonZero(cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel[i], 0));
+        expectZero(ibv_req_notify_cq(cq[i], 0));
+    }
+    
+    int mrFlags = IBV_ACCESS_LOCAL_WRITE |
+                  IBV_ACCESS_REMOTE_READ |
+                  IBV_ACCESS_REMOTE_WRITE |
+                  IBV_ACCESS_REMOTE_ATOMIC;
+    expectNonZero(mr = ibv_reg_mr(pd, memConf->getMemory(), memConf->getCapacity(), mrFlags));
+}
+
+void RDMASocket::buildConnection(rdma_cm_id *cmId)
+{
+    buildResources(cmId->verbs);
+
+    ibv_qp_init_attr qp_init_attr;
+    memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
+    qp_init_attr.qp_type = IBV_QPT_RC;
+    qp_init_attr.send_cq = cq[CQ_SEND];
+    qp_init_attr.recv_cq = cq[CQ_RECV];
+    qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
+    qp_init_attr.cap.max_send_sge = 1;
+    qp_init_attr.cap.max_recv_sge = 1;
+
+    expectZero(rdma_create_qp(cmId, pd, &qp_init_attr));
+
+    int peerId = cm2id[(uint64_t)cmId];
+    RDMAConnection *peer = peers + peerId;
+    peer->peerId = peerId;
+    peer->cmId = cmId;
+    peer->qp = cmId->qp;
+    peer->connected = false;
+    peer->sendRegion = new uint8_t[RDMA_BUF_SIZE];
+    peer->recvRegion = new uint8_t[RDMA_BUF_SIZE];
+    peer->writeRegion = new uint8_t[Block4K::capacity];
+    peer->readRegion = new uint8_t[Block4K::capacity];
+
+    expectNonZero(peer->sendMR = ibv_reg_mr(pd, peer->sendRegion, RDMA_BUF_SIZE, 0));
+    expectNonZero(peer->recvMR = ibv_reg_mr(pd, peer->recvRegion, RDMA_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE));
+    expectNonZero(peer->writeMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, 0));
+    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->readRegion, Block4K::capacity, IBV_ACCESS_LOCAL_WRITE));
+
+    cmId->context = reinterpret_cast<void *>(peers + peerId);
+
+    /* Wait for remote MR */
+    postReceive(peerId, sizeof(Message), SP_REMOTE_MR_RECV);
+}
+
+void RDMASocket::buildConnParam(rdma_conn_param *param)
+{
+    memset(param, 0, sizeof(rdma_conn_param));
+    param->initiator_depth = MAX_REQS;
+    param->responder_resources = MAX_REQS;
+    param->rnr_retry_count = 7;             /* infinite retry */
+    param->private_data = reinterpret_cast<const void *>(&nodeIDBuf);
+    param->private_data_len = sizeof(uint32_t);
+}
+
+void RDMASocket::destroyConnection(rdma_cm_id *cmId)
+{
+    int peerId = cm2id[(uint64_t)cmId];
+    peers[peerId].connected = false;
+    peers[peerId].qp = nullptr;
+    peers[peerId].cmId = nullptr;
+    
+    ibv_dereg_mr(peers[peerId].sendMR);
+    ibv_dereg_mr(peers[peerId].recvMR);
+    ibv_dereg_mr(peers[peerId].writeMR);
+    ibv_dereg_mr(peers[peerId].readMR);
+
+    delete[] peers[peerId].sendRegion;
+    delete[] peers[peerId].recvRegion;
+    delete[] peers[peerId].writeRegion;
+    delete[] peers[peerId].readRegion;
+
+    cm2id.erase((uint64_t)cmId);
+
+    rdma_destroy_qp(cmId);
+    rdma_destroy_id(cmId);
+}
+
+/* Show the QP status with the designated peer. */
 void RDMASocket::verboseQP(int peerId)
 {
     ibv_qp_attr attr;
     ibv_qp_init_attr init_attr;
 
-    ibv_query_qp(rs.peers[peerId].qp, &attr, IBV_QP_STATE, &init_attr);
+    ibv_query_qp(peers[peerId].qp, &attr, IBV_QP_STATE, &init_attr);
 
 #define CHECK(STATE)                                    \
         if (attr.qp_state == IBV_QPS_##STATE) {         \
-            d_force("client %d QP: %s", rs.peers[peerId].nodeId, #STATE);        \
+            d_force("client %d QP: %s", peerId, #STATE);        \
             return;                                     \
         }
     CHECK(RESET);
@@ -280,466 +338,169 @@ void RDMASocket::verboseQP(int peerId)
 #undef CHECK
 }
 
-/*
- * Issue a send request to the designated peer.
- */
-int RDMASocket::postSend(int peerId, uint64_t localSrc, uint64_t length)
+/* Check whether a peer is still alive (connected). */
+bool RDMASocket::isPeerAlive(int peerId)
 {
-    ibv_send_wr sr;
+    if (peerId == myNodeConf->id)
+        return true;
+    return peers[peerId].connected;
+}
+
+/* Issue a send request to the designated peer, and return a unique task ID. */
+void RDMASocket::postSend(int peerId, uint64_t length)
+{
+    if (!shouldRun) {
+        d_err("send request after shouldRun=false is ignored");
+        return;
+    }
+
+    ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
+
+    memset(&sge, 0, sizeof(ibv_sge));
+    sge.addr = ((uint64_t)(peers[peerId].sendRegion));
+    sge.length = length;
+    sge.lkey = peers[peerId].sendMR->lkey;
+
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = WRID(peerId, 0);
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.imm_data = myNodeConf->id;
+    wr.opcode = IBV_WR_SEND_WITH_IMM;
+    wr.send_flags = IBV_SEND_INLINE;
+
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
+}
+
+/* Issue a receive request to the designated peer. DOES NOT ALLOCATE HASHTABLE ID. */
+void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
+{
+    if (!shouldRun) {
+        d_err("recv request after shouldRun=false is ignored");
+        return;
+    }
+
+    ibv_recv_wr wr, *badWr = nullptr;
+    ibv_sge sge;
+
+    memset(&sge, 0, sizeof(ibv_sge));
+    sge.addr = (uint64_t)(peers[peerId].recvRegion);
+    sge.length = length;
+    sge.lkey = peers[peerId].recvMR->lkey;
+
+    memset(&wr, 0, sizeof(ibv_recv_wr));
+    wr.wr_id = WRID(peerId, specialTaskId);
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.next = nullptr;
+
+    expectZero(ibv_post_recv(peers[peerId].qp, &wr, &badWr));
+}
+
+/* Issue a write request to the designated peer, and return a unique task ID. */
+void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
+                           uint64_t length, int imm)
+{
+    if (!shouldRun) {
+        d_err("write request after shouldRun=false is ignored");
+        return;
+    }
+
+    ibv_send_wr wr, *badWr = nullptr;
+    ibv_sge sge;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localSrc;
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = peers[peerId].writeMR->lkey;
 
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
-    sr.imm_data = myNodeConf->id;
-    sr.opcode = IBV_WR_SEND_WITH_IMM;
-    sr.send_flags = IBV_SEND_SIGNALED;
-
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA send to peer: %d", peerId);
-        return -1;
-    }
-    return 0;
-}
-
-/*
- * Prepare for incoming send requests from the designated peer.
- * Poll at CQ for the result.
- * Let length = 0 to allow any send lengths.
- * The incoming sends will be stored at the receive buffer for this peer (see code).
- */
-int RDMASocket::postReceive(int peerId, uint64_t length)
-{
-    ibv_recv_wr rr;
-    ibv_sge sge;
-    ibv_recv_wr *bad_wr;
-
-    memset(&sge, 0, sizeof(ibv_sge));
-    sge.addr = (uint64_t)memConf->getReceiveBuffer(peerId);
-    sge.length = length;
-    sge.lkey = rs.mr->lkey;
-
-    memset(&rr, 0, sizeof(ibv_recv_wr));
-    rr.wr_id = 0;
-    rr.sg_list = &sge;
-    rr.num_sge = 1;
-
-    if (ibv_post_recv(rs.peers[peerId].qp, &rr, &bad_wr) < 0) {
-        d_err("failed to post RDMA recv");
-        return -1;
-    }
-    return 0;
-}
-
-/*
- * Issue a write request to the designated peer.
- * Users should pass in a remote "address shift", since this function will add it to the base address.
- */
-int RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm)
-{
-    ibv_send_wr sr;
-    ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
-
-    memset(&sge, 0, sizeof(ibv_sge));
-    sge.addr = localSrc;
-    sge.length = length;
-    sge.lkey = rs.mr->lkey;
-
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = WRID(peerId, 0);
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
     if (imm == -1)
-        sr.opcode = IBV_WR_RDMA_WRITE;
+        wr.opcode = IBV_WR_RDMA_WRITE;
     else {
-        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-        sr.imm_data = imm;
+        wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        wr.imm_data = imm;
     }
-    sr.send_flags = IBV_SEND_SIGNALED;
-    sr.wr.rdma.remote_addr = rs.peers[peerId].baseAddr + remoteDstShift;
-    sr.wr.rdma.rkey = rs.peers[peerId].rkey;
+    //wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteDstShift;
+    wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA write (%s)", strerror(errno));
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
 
-/*
- * Issue a read request from the designated peer.
- * Users should pass in a remote "address shift", since this function will add it
- * to the base address.
- */
-int RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length)
+/* Issue a read request from the designated peer, and return a unique task ID. */
+void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId)
 {
-    ibv_send_wr sr;
+    if (!shouldRun) {
+        d_err("read request after shouldRun=false is ignored");
+        return;
+    }
+
+    ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
-    ibv_send_wr *bad_wr = nullptr;
 
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = localDst;
     sge.length = length;
-    sge.lkey = rs.mr->lkey;
+    sge.lkey = peers[peerId].readMR->lkey;
 
-    memset(&sr, 0, sizeof(ibv_send_wr));
-    sr.wr_id = 0;
-    sr.sg_list = &sge;
-    sr.num_sge = 1;
-    sr.opcode = IBV_WR_RDMA_READ;
-    sr.send_flags = IBV_SEND_SIGNALED;
-    sr.wr.rdma.remote_addr = rs.peers[peerId].baseAddr + remoteSrcShift;
-    sr.wr.rdma.rkey = rs.peers[peerId].rkey;
+    memset(&wr, 0, sizeof(ibv_send_wr));
+    wr.wr_id = WRID(peerId, taskId);
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.opcode = IBV_WR_RDMA_READ;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteSrcShift;
+    wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
-    if (ibv_post_send(rs.peers[peerId].qp, &sr, &bad_wr) < 0) {
-        d_err("failed to post RDMA read (%s)", strerror(errno));
-        return -1;
-    }
-    return 0;
+    expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
 
-/*
- * Exchanges equal amount of data through a socket.
- */
-int RDMASocket::socketExchangeData(int sock, int size, void *localData, void *remoteData)
+/* Poll for next CQE in send CQ (RDMA read). */
+int RDMASocket::pollSendCompletion(ibv_wc *wc)
 {
-    int readBytes = 0;
-    int totalBytes = 0;
-    int ret = write(sock, localData, size);
+    static ibv_cq *cq = nullptr;
+    void *ctx;
 
-    if (ret < size) {
-        d_err("failed to send data during sock_sync_data");
-        return ret;
-    }
-    else
-        ret = 0;
-    
-    while (ret == 0 && totalBytes < size)
-    {
-        uint8_t *startPos = reinterpret_cast<uint8_t *>(remoteData) + totalBytes;
-        readBytes = read(sock, reinterpret_cast<void *>(startPos), size);
-        if (readBytes > 0)
-            totalBytes += readBytes;
+    while (true) {
+        if (!cq) {
+            expectZero(ibv_get_cq_event(compChannel[CQ_SEND], &cq, &ctx));
+            ibv_ack_cq_events(cq, 1);
+            expectZero(ibv_req_notify_cq(cq, 0));
+        }
+
+        int ret = ibv_poll_cq(cq, 1, wc);
+        if (!ret)
+            cq = nullptr;
         else
-            ret = readBytes;
+            return ret;
     }
-
-    if (ret < size)
-        d_err("failed to receive data during sock_sync_data");
-    return ret;
 }
 
 /*
- * Actively establish TCP connection to the designated peer.
- * The peer's IP address is expected to be found from the cluster configuration.
- * 
- * RDMA resources are intact by this function.
+ * Poll for next CQE in recv CQ (RDMA recv).
+ * Cannot reuse pollSendCompletion code because there is a state (static variable).
  */
-int RDMASocket::socketConnect(int peerId)
+int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
-    auto _peerConf = clusterConf->findConfById(peerId);
-    if (!_peerConf.has_value()) {
-        d_err("cannot find node configuration for peer: %d", peerId);
-        return -1;
-    }
-    auto peerConf = _peerConf.value();
+    static ibv_cq *cq = nullptr;
+    void *ctx;
 
-    sockaddr_in remote_addr;
-    timeval timeout = {
-        .tv_sec = 3,
-        .tv_usec = 0
-    };
-
-    memset(&remote_addr, 0, sizeof(sockaddr_in));
-    remote_addr.sin_family = AF_INET;
-    remote_addr.sin_addr.s_addr = peerConf.ipAddr;
-    remote_addr.sin_port = htons(cmdConf->tcpPort);
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        d_err("failed to create socket");
-        return -1;
-    }
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeval)) < 0)
-        d_warn("failed to set socket timeout");
-    
-    int retries;
-    for (retries = 1; retries <= MAX_CONN_RETRIES; ++retries) {
-        int ret = connect(sock, reinterpret_cast<sockaddr *>(&remote_addr), sizeof(sockaddr));
-        if (ret < 0) {
-            d_warn("cannot connect to remote %d (retry #%d)", peerId, retries);
-            usleep(CONN_RETRY_INTERVAL);
+    while (true) {
+        if (!cq) {
+            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, &ctx));
+            ibv_ack_cq_events(cq, 1);
+            expectZero(ibv_req_notify_cq(cq, 0));
         }
+
+        int ret = ibv_poll_cq(cq, 1, wc);
+        if (!ret)
+            cq = nullptr;
         else
-            break;
+            return ret;
     }
-    if (retries > MAX_CONN_RETRIES) {
-        d_err("failed to connect to remote: %d", peerId);
-        return -1;
-    }
-    return sock;
-}
-
-/*
- * Initialize a new QP.
- */
-int RDMASocket::createQP(PeerInfo *peer)
-{
-    /* Currently, connection to all peers share the same CQ */
-    peer->cq = rs.cq;
-
-    ibv_qp_init_attr qp_init_attr;
-    memset(&qp_init_attr, 0, sizeof(ibv_qp_init_attr));
-    qp_init_attr.qp_type = IBV_QPT_RC;
-    qp_init_attr.sq_sig_all = 1;
-    qp_init_attr.send_cq = peer->cq;
-    qp_init_attr.recv_cq = peer->cq;
-    qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
-    qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
-    qp_init_attr.cap.max_send_sge = 1;
-    qp_init_attr.cap.max_recv_sge = 1;
-
-    peer->qp = ibv_create_qp(rs.pd, &qp_init_attr);
-    if (peer->qp == nullptr) {
-        d_err("failed to create QP (with peer: %d)", peer->connInfo.nodeId);
-        return -1;
-    }
-    return 0;
-}
-
-int RDMASocket::connectQP(PeerInfo *peer)
-{
-    ConnInfo localConnInfo, remoteConnInfo;
-
-    localConnInfo.baseAddr = (uint64_t)memConf->getMemory();
-    localConnInfo.rkey = rs.mr->rkey;
-    localConnInfo.qpn = peer->qp->qp_num;
-    localConnInfo.lid = rs.portAttr.lid;
-    localConnInfo.nodeId = myNodeConf->id;
-
-    if (socketExchangeData(peer->sock, sizeof(ConnInfo), &localConnInfo, &remoteConnInfo) < 0) {
-        d_err("failed to sync with remote");
-        return -1;
-    }
-    memcpy(&peer->connInfo, &remoteConnInfo, sizeof(ConnInfo));
-
-    d_info("successfully sync with peer: %d", remoteConnInfo.nodeId);
-
-    if (createQP(peer) < 0 || modifyQPtoInit(peer) < 0 || modifyQPtoRTR(peer) < 0 ||
-        modifyQPtoRTS(peer) < 0)
-        return -1;
-
-    d_info("successfully modified QP to Init,RTR,RTS (with peer: %d)", peer->connInfo.nodeId);
-    return 0;
-}
-
-int RDMASocket::modifyQPtoInit(PeerInfo *peer)
-{
-    ibv_qp_attr attr;
-    memset(&attr, 0, sizeof(attr));
-    attr.qp_state = IBV_QPS_INIT;
-    attr.port_num = cmdConf->ibPort;
-    attr.pkey_index = 0;
-    attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE |
-                           IBV_ACCESS_REMOTE_READ |
-                           IBV_ACCESS_REMOTE_WRITE |
-                           IBV_ACCESS_REMOTE_ATOMIC;
-    
-    int flags = IBV_QP_STATE |
-                IBV_QP_PKEY_INDEX |
-                IBV_QP_PORT |
-                IBV_QP_ACCESS_FLAGS;
-    if (ibv_modify_qp(peer->qp, &attr, flags) != 0) {
-        d_err("failed to modify QP to init");
-        return -1;
-    }
-    return 0;
-}
-
-int RDMASocket::modifyQPtoRTR(PeerInfo *peer)
-{
-    ibv_qp_attr attr;
-    memset(&attr, 0, sizeof(attr));
-    attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_4096;
-    attr.dest_qp_num = peer->connInfo.qpn;
-    attr.rq_psn = PSN_MAGIC;
-    attr.max_dest_rd_atomic = MAX_DEST_RD_ATOMIC;
-    attr.min_rnr_timer = 12;                        /* 640 us */
-    attr.ah_attr.is_global = 0;
-    attr.ah_attr.dlid = peer->connInfo.lid;
-    attr.ah_attr.sl = 0;
-    attr.ah_attr.src_path_bits = 0;
-    attr.ah_attr.port_num = cmdConf->ibPort;
-
-    int flags = IBV_QP_STATE |
-                IBV_QP_AV |
-                IBV_QP_PATH_MTU |
-                IBV_QP_DEST_QPN |
-                IBV_QP_RQ_PSN |
-                IBV_QP_MAX_DEST_RD_ATOMIC |
-                IBV_QP_MIN_RNR_TIMER;
-    if (ibv_modify_qp(peer->qp, &attr, flags) != 0) {
-        d_err("failed to modify QP to RTR (with peer: %d)", peer->connInfo.nodeId);
-        return -1;
-    }
-    return 0;
-}
-
-int RDMASocket::modifyQPtoRTS(PeerInfo *peer)
-{
-    ibv_qp_attr attr;
-    memset(&attr, 0, sizeof(attr));
-    attr.qp_state = IBV_QPS_RTS;
-    attr.timeout = 12;              /* 16777.22 us */
-    attr.retry_cnt = 7;             /* infinite times */
-    attr.rnr_retry = 7;             /* infinite times */
-    attr.sq_psn = PSN_MAGIC;
-    attr.max_rd_atomic = 1;
-    
-    int flags = IBV_QP_STATE |
-                IBV_QP_TIMEOUT |
-                IBV_QP_RETRY_CNT |
-                IBV_QP_RNR_RETRY |
-                IBV_QP_SQ_PSN |
-                IBV_QP_MAX_QP_RD_ATOMIC;
-    if (ibv_modify_qp(peer->qp, &attr, flags) != 0) {
-        d_err("failed to modify QP to RTS (with peer: %d)", peer->connInfo.nodeId);
-        return -1;
-    }
-    return 0;
-}
-
-/*
- * Loop infinitely to passively accept incoming TCP connections.
- * For each TCP connection, exchange data and establish an RDMA connection.
- * 
- * This function is expected to be called by newing a thread.
- */
-void RDMASocket::rdmaAccept(int sock)
-{
-    int acceptedPeers = 0;
-    int expectedPeers = clusterConf->getClusterSize() - myNodeConf->id - 1;
-    if (expectedPeers < 0) {
-        d_warn("expected peers < 0, use +inf instead");
-        expectedPeers = 99999;
-    }
-
-    socklen_t socklen = sizeof(sockaddr);
-    sockaddr_in remoteAddr;
-    while (isRunning.load()) {
-        int fd = accept(sock, reinterpret_cast<sockaddr *>(&remoteAddr), &socklen);
-        if (fd < 0) {
-            d_err("error on accepting incoming TCP connections, stop");
-            return;
-        }
-
-        PeerInfo peer;
-        memset(&peer, 0, sizeof(PeerInfo));
-        peer.sock = fd;
-
-        /* peer.qp, peer.cq are now valid */
-        if (createQP(&peer) < 0) {
-            d_err("failed to create QP, stop");
-            return;
-        }
-        /* peer.connInfo is now valid */
-        if (connectQP(&peer) < 0) {
-            d_err("failed to connect QP, stop");
-            return;
-        }
-
-        peer.sendBuf = memConf->getSendBuffer(peer.nodeId);
-        peer.recvBuf = memConf->getReceiveBuffer(peer.nodeId);
-        memcpy(&rs.peers[peer.nodeId], &peer, sizeof(PeerInfo));
-
-        /* Prepare the first receive work request */
-        postReceive(peer.nodeId, 0);
-        
-        if (++acceptedPeers >= expectedPeers) {
-            d_info("%d peers connected as expected, stop", expectedPeers);
-            return;
-        }
-    }
-}
-
-int RDMASocket::rdmaListen(int port)
-{
-    sockaddr_in localAddr;
-    memset(&localAddr, 0, sizeof(sockaddr_in));
-    localAddr.sin_family = AF_INET;
-    localAddr.sin_addr.s_addr = INADDR_ANY;
-    localAddr.sin_port = htons(cmdConf->tcpPort);
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        d_err("failed to create socket");
-        return -1;
-    }
-    int on = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
-        d_err("failed to set SO_REUSEADDR (%s)", strerror(errno));
-        close(sock);
-        return -1;
-    }
-    if (bind(sock, reinterpret_cast<sockaddr *>(&localAddr), sizeof(sockaddr)) < 0) {
-        d_err("failed to bind socket (%s)", strerror(errno));
-        close(sock);
-        return -1;
-    }
-
-    listen(sock, MAX_QUEUED_CONNS);
-    rdmaListener = std::thread(&RDMASocket::rdmaAccept, this, sock);
-    rdmaListener.detach();
-
-    return 0;
-}
-
-int RDMASocket::pollCompletion(ibv_wc *wc)
-{
-    int count = 0;
-
-    while (1) {
-        count = ibv_poll_cq(rs.cq, 1, wc);
-        if (count < 0) {
-            d_err("failed to poll from CQ (%s)", strerror(errno));
-            return -1;
-        }
-        if (count > 0)
-            break;
-    }    
-    
-    if (wc->status != IBV_WC_SUCCESS) {
-        d_err("failed wc (%d, %s), wr_id = %lu",
-                (int)wc->status, ibv_wc_status_str(wc->status), wc->wr_id);
-        return -1;
-    }
-    return count;
-}
-
-int RDMASocket::pollOnce(ibv_wc *wc)
-{
-    int count = ibv_poll_cq(rs.cq, 1, wc);
-    
-    if (count < 0) {
-        d_err("failed to poll from CQ (%s)", strerror(errno));
-        return -1;
-    }
-    if (count == 0)
-        return 0;
-    
-    if (wc->status != IBV_WC_SUCCESS) {
-        d_err("failed wc (%d, %s), wr_id = %lu",
-                (int)wc->status, ibv_wc_status_str(wc->status), wc->wr_id);
-        return -1;
-    }
-    return count;
 }

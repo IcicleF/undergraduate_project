@@ -1,7 +1,7 @@
 #if !defined(ALLOCTABLE_HPP)
 #define ALLOCTABLE_HPP
 
-#include "common.hpp"
+#include "commons.hpp"
 #include "config.hpp"
 #include "debug.hpp"
 
@@ -49,8 +49,8 @@ public:
             exit(-1);
         }
 
-        auto *area = reinterpret_cast<uint8_t *>(memConf->getDataArea());
-        uint64_t areaSize = memConf->getDataAreaCapacity();
+        auto *area = reinterpret_cast<uint8_t *>(memConf->getMemory());
+        uint64_t areaSize = memConf->getCapacity();
         bool shouldInit = true;
 
         if (((uint64_t)area) % 8 != 0) {
@@ -79,7 +79,7 @@ public:
 
         if (shouldInit) {
             memset(bitmap, -1, bitmapBytes);                        /* Initialize to all-ones */
-            mem_force_flush(allocTableMagic);                       /* persist */
+            __mem_clflush(allocTableMagic);                       /* persist */
         }
     }
     ~AllocationTable() = default;
@@ -101,107 +101,6 @@ public:
 
     /* Returns the capacity of the allocation table */
     __always_inline uint64_t getCapacity() const { return length; }
-
-    /*
-     * Test a bit in the allocation table bitmap. 
-     * 1 - vacant
-     * 0 - occupied
-     */
-    __always_inline int testBit(uint64_t index)
-    {
-        register int ret asm("eax");
-        asm volatile(
-            "btq %2, %3;"
-            "setb %%al"
-            : "=r"(ret)
-            : "0"(0), "r"(index), "m"(*(bitmap))
-            : "cc"
-        );
-        return ret;
-    }
-
-    /* Atomically test and set bit (deallocate). */
-    __always_inline int setBit(uint64_t index)
-    {
-        register int ret asm("eax");
-        asm volatile(
-            "lock btsq %2, %3;"
-            "setb %%al"
-            : "=r"(ret)
-            : "0"(0), "r"(index), "m"(*(bitmap))
-            : "cc"
-        );
-        return ret;
-    }
-
-    /* Atomically test and clear bit (allocate). */
-    __always_inline int clearBit(uint64_t index)
-    {
-        register int ret asm("eax");
-        asm volatile(
-            "lock btrq %2, %3;"
-            "setb %%al"
-            : "=r"(ret)
-            : "0"(0), "r"(index), "m"(*(bitmap))
-            : "cc"
-        );
-        return ret;
-    }
-
-    /* Find the first 1 (vacant) bit in the allocation table bitmap, starting from the designate bit. */
-    __always_inline uint64_t findVacantBit(uint64_t startFrom)
-    {
-        register uint64_t ret asm("rax");
-
-        if (startFrom < 0 || startFrom >= length)
-            return -1;
-        startFrom &= -8;                                // round down to whole bytes
-
-        asm volatile(
-            "bsf %1, %0"
-            : "=r"(ret)
-            : "m"(*(bitmap + startFrom / 8))
-        );
-        ret += startFrom;
-
-        if (ret >= length)
-            return -1;
-        return ret;
-    }
-
-    /* */
-    Ty *allocElem(uint64_t *index)
-    {
-        uint64_t ret = 0;
-
-        while (1) {
-            ret = findVacantBit(ret);
-            if (unlikely(ret == -1)) {
-                *index = -1;
-                return NULL;
-            }
-            if (likely(clearBit(ret) == 1))     /* If successfully cleared the 1, returns */
-                break;
-        }
-
-        ++allocated;
-        *index = ret;
-        return at(*index);
-    }
-    
-    void deallocElem(Ty *elem)
-    {
-        deallocElem(elem - reinterpret_cast<Ty *>(mappedArea));
-    }
-    void deallocElem(uint64_t index)
-    {
-        if (unlikely(setBit(index) == 1)) {
-            d_err("bit #%lu is already vacant", index);
-            return;
-        }
-        --allocated;
-    }
-
 
 private:
     uint32_t *allocTableMagic = nullptr;    /* Detect if the pmem has been initialized */

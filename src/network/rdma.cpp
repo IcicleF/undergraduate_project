@@ -302,7 +302,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
     /* Wait for remote MR */
-    postReceive(peerId, 0, SP_REMOTE_MR_RECV);
+    postReceive(peerId, sizeof(Message), SP_REMOTE_MR_RECV);
 }
 
 void RDMASocket::buildConnParam(rdma_conn_param *param)
@@ -398,7 +398,7 @@ uint32_t RDMASocket::postSend(int peerId, uint64_t length, int specialTaskId)
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = ((uint64_t)(peers[peerId].sendRegion));
     sge.length = length;
-    sge.lkey = mr->lkey;
+    sge.lkey = peers[peerId].sendMR->lkey;
 
     memset(&wr, 0, sizeof(ibv_send_wr));
     wr.wr_id = WRID(peerId, taskId);
@@ -406,7 +406,7 @@ uint32_t RDMASocket::postSend(int peerId, uint64_t length, int specialTaskId)
     wr.num_sge = 1;
     wr.imm_data = myNodeConf->id;
     wr.opcode = IBV_WR_SEND_WITH_IMM;
-    wr.send_flags = IBV_SEND_SIGNALED;
+    //wr.send_flags = IBV_SEND_SIGNALED;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
     return taskId;
@@ -430,7 +430,7 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
     memset(&sge, 0, sizeof(ibv_sge));
     sge.addr = (uint64_t)(peers[peerId].recvRegion);
     sge.length = length;
-    sge.lkey = mr->lkey;
+    sge.lkey = peers[peerId].recvMR->lkey;
 
     memset(&wr, 0, sizeof(ibv_recv_wr));
     wr.wr_id = WRID(peerId, specialTaskId);

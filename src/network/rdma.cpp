@@ -178,7 +178,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
     /* Send MR to peer */
     auto *mrMsg = reinterpret_cast<Message *>(peer->sendRegion);
     mrMsg->type = Message::MESG_REMOTE_MR;
-    memcpy(mr, &mrMsg->data.mr, sizeof(ibv_mr));
+    memcpy(&mrMsg->data.mr, mr, sizeof(ibv_mr));
     postSend(peer->peerId, sizeof(Message));
 
     /*
@@ -197,7 +197,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
         if (msg->type == Message::MESG_REMOTE_MR) {
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
             peer->connected = true;    
-            d_info("successfully connected with peer: %d", peer->peerId);
+            d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
 
             ++incomingConns;
             {
@@ -341,6 +341,8 @@ void RDMASocket::verboseQP(int peerId)
 /* Check whether a peer is still alive (connected). */
 bool RDMASocket::isPeerAlive(int peerId)
 {
+    if (peerId == myNodeConf->id)
+        return true;
     return peers[peerId].connected;
 }
 

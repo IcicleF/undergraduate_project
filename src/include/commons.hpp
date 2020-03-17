@@ -62,13 +62,6 @@
 #define likely(x)               __builtin_expect(!!(x), 1)
 #define unlikely(x)             __builtin_expect(!!(x), 0)
 
-#define expectZero(x)           do { if ((x)) { d_err(#x "  failed (!= 0, %s)", strerror(errno)); } } while (0)
-#define expectNonZero(x)        do { if (!(x)) { d_err(#x "  failed (== 0, %s)", strerror(errno)); } } while (0)
-#define expectTrue(x)           do { if (!(x)) { d_err(#x "  failed (false, %s)", strerror(errno)); } } while (0)
-#define expectFalse(x)          do { if ((x)) { d_err(#x "  failed (true, %s)", strerror(errno)); } } while (0)
-#define expectPositive(x)       do { if ((x) <= 0) { d_err(#x "  failed (<= 0, %s)", strerror(errno)); } } while (0)
-#define expectNegative(x)       do { if ((x) >= 0) { d_err(#x "  failed (>= 0), %s", strerror(errno)); } } while (0)
-
 #ifdef __packed
 #undef __packed
 #endif

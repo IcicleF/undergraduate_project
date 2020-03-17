@@ -25,7 +25,6 @@
 
 #include "config.hpp"
 #include "message.hpp"
-#include "hashtable.hpp"
 
 /* Store necessary information for a connection with a peer. */
 struct RDMAConnection
@@ -44,44 +43,35 @@ struct RDMAConnection
     uint8_t *recvRegion;                /* Recv Region: allocated */
 };
 
-/* Predeclaration for RDMASocket to friend it */
+/* Predeclaration for RDMASocket to befriend it */
 class RPCInterface;
 
 /*
  * Store all necessary resources for RDMA connection with other nodes.
  * 
- *   RDMASocket uses RDMA CM APIs to build RDMA reliable connections (RCs) with peers.
- *   TCP must be available for the RDMA CM to build connections.
- * 
- *   Before posting any RDMA send/recv/read/write requests, a HashTable instance must
- * be registered. Unless specified, a unique ID will be automatically assigned to each
- * request (and is returned).
- *   Hash table entries will be set upon WR completion.
- *   Users must manually free this ID to avoid filling the hash table full. However,
- * there is always room for special IDs and they MUST NOT be freed.
+ * RDMASocket uses RDMA CM APIs to build RDMA reliable connections (RCs) with peers.
+ * TCP must be available for the RDMA CM to build connections.
  */
 class RDMASocket
 {
     friend class RPCInterface;
 
 public:
-    explicit RDMASocket(HashTable *hashTable);
+    explicit RDMASocket();
     ~RDMASocket();
     RDMASocket(const RDMASocket &) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;
 
-    void registerHashTable(HashTable *hashTable);
     void verboseQP(int peerId);
     bool isPeerAlive(int peerId);
     void stopListenerAndJoin();
 
-    uint32_t postSend(int peerId, uint64_t length, int specialTaskId = -1);
+    void postSend(int peerId, uint64_t length);
     void postReceive(int peerId, uint64_t length, int specialTaskId = 0);
-    uint32_t postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length,
-                       int imm = -1, int specialTaskId = -1);
-    uint32_t postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length,
-                      int specialTaskId = -1);
+    void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
+    void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0);
 
+    int pollSendCompletion(ibv_wc *wc);
     int pollRecvCompletion(ibv_wc *wc);
 
 private:
@@ -98,14 +88,11 @@ private:
     void buildConnParam(rdma_conn_param *param);
     void destroyConnection(rdma_cm_id *cmId);
 
-    HashTable *hashTable = nullptr;         /* Record completion status */
-
     ibv_context *ctx = nullptr;
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
-    ibv_cq *cq;                             /* Recv CQ (sends never generate CQEs) */
-    ibv_comp_channel *compChannel;          /* Complete channel */
-    std::thread cqSendPoller;               /* listenSendCQ thread */
+    ibv_cq *cq[MAX_CQS];                    /* [0]: send CQ; [1]: recv CQ */
+    ibv_comp_channel *compChannel[MAX_CQS]; /* [0]: send channel; [1]: recv channel */
 
     rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
     rdma_cm_id *listener = nullptr;         /* RDMA listener */

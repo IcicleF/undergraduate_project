@@ -49,7 +49,6 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     static BlockTy readBuffer[K];
     static int decodeIndex[K], errIndex[K];
     uint8_t *recoverSrc[N], *recoverOutput[N];
-    HashTable *hashTable = rpcInterface->getHashTable();
 
     page.index = index;
     memset(page.page.data, 0, Block4K::capacity);
@@ -70,21 +69,19 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
-    uint32_t tasks[K];
     int taskCnt = 0;
     for (int i = 0; i < K; ++i) {
         if (decodeIndex[i] != myNodeConf->id) {
-            uint32_t taskId = rpcInterface->remoteReadFrom(decodeIndex[i], blockShift,
-                    (uint64_t)recoverSrc[i], BlockTy::size);
-            tasks[taskCnt++] = taskId;
+            rpcInterface->remoteReadFrom(decodeIndex[i], blockShift, (uint64_t)recoverSrc[i], BlockTy::size, i);
+            ++taskCnt;
         }
         else
             memcpy(recoverSrc[i], allocTable->at(pos.row), BlockTy::size);
     }
-    for (int i = 0; i < taskCnt; ++i) {
-        while ((*hashTable)[tasks[i]] == 0) ;
-        hashTable->freeID(tasks[i]);
-    }
+
+    ibv_wc wc[2];
+    while (taskCnt)
+        taskCnt -= rpcInterface->getRDMASocket()->pollSendCompletion(wc);
 
     if (errs == 0)
         return;
@@ -125,13 +122,8 @@ void ECAL::writeBlock(ECAL::Page &page)
         uint8_t *blk = (i < K ? data[i] : parity[i - K]);
         
         if (nodeId == myNodeConf->id)
-            memcpy(allocTable->at(pos.row), blk, BlockTy::capacity);
-        else {
-            int ret = rpcInterface->remoteWriteTo(nodeId, blockShift,
-                    (uint64_t)blk, BlockTy::capacity);
-            if (ret < 0) {
-                d_err("failed to RDMA write to peer: %d", nodeId);
-            }
-        }
+            memcpy(allocTable->at(pos.row), blk, BlockTy::size);
+        else
+            rpcInterface->remoteWriteTo(nodeId, blockShift, (uint64_t)blk, BlockTy::size);
     }
 }

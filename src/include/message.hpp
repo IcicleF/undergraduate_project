@@ -6,6 +6,15 @@
 
 #include "commons.hpp" 
 
+enum SpecialWRType
+{
+    SP_REMOTE_MR_SEND = 1,
+    SP_REMOTE_MR_RECV,
+    SP_SYNC_SEND,
+    SP_SYNC_RECV,
+    SP_TYPES
+};
+
 struct RPCMessage
 {
     enum {

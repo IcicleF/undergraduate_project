@@ -28,32 +28,27 @@ public:
     void syncAmongPeers();
 
     __always_inline
-    uint32_t remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst,
-                            uint64_t length, int specialTaskId = -1)
+    void remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0)
     {
-        return socket->postRead(peerId, remoteSrcShift, localDst, length, specialTaskId);
+        socket->postRead(peerId, remoteSrcShift, localDst, length, taskId);
     }
     __always_inline
-    uint32_t remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
-                           uint64_t length, int imm = -1, int specialTaskId = -1)
+    void remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
     {
-        return socket->postWrite(peerId, remoteDstShift, localSrc, length, imm, specialTaskId);
+        socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
     }
     
     void rpcListen();
     int rpcProcessCall(int peerId, const Message *message, Message *response);
     int remoteRPCCall(int peerId, const Message *request, Message *response);
 
-    __always_inline HashTable *getHashTable() { return hashTable; }
     __always_inline RDMASocket *getRDMASocket() const { return socket; }
 
 private:
     RDMASocket *socket = nullptr;
     std::thread rpcListener;
 
-    HashTable *hashTable = nullptr;
     short peerAliveStatus[MAX_NODES];
-
     bool shouldRun;
 };
 

@@ -80,9 +80,11 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     }
 
     ibv_wc wc[2];
-    while (taskCnt)
+    while (taskCnt) {
         taskCnt -= rpcInterface->getRDMASocket()->pollSendCompletion(wc);
-    
+        //d_info("wc->status=%d", (int)wc->status);
+    }
+
     /* Copy intact data */
     for (int i = 0; i < K; ++i)
         if (decodeIndex[i] < K)

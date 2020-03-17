@@ -62,7 +62,7 @@ int main(int argc, char **argv)
     ECAL ecal;
 
     if (myNodeConf->id != 0) {
-        printf("This node is not #0, wait...");
+        printf("This node is not #0, wait...\n");
         ecal.getRPCInterface()->syncAmongPeers();
         return 0;
     }
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
         }
 
         /* Degraded read */
-        printf("Starting degraded read...");
+        printf("Starting degraded read...\n");
         ecal.getRPCInterface()->__markAsDead(1);
         for (int i = 0; i < N; ++i) {
             uint64_t blkid = pageIds[i];
@@ -155,8 +155,8 @@ int main(int argc, char **argv)
     printf("Test finished.\n");
     printf("\n");
     printf("Write: total %ld us, avg. %.3lf us\n", writeUs, (double)writeUs / N);
-    printf("Read: total %ld us, avg. %.3lf us\n", readUs, (double)readUs / N);
-    printf("Degraded Read: total %ld us, avg. %.3lf us\n", degradedReadUs, (double)degradedReadUs / N);
+    printf("Read: %d correct, total %ld us, avg. %.3lf us\n", readCorrect, readUs, (double)readUs / N);
+    printf("Degraded Read: %d correct, total %ld us, avg. %.3lf us\n", degradedReadCorrect, degradedReadUs, (double)degradedReadUs / N);
     printf("\n");
 
     ecal.getRPCInterface()->syncAmongPeers();

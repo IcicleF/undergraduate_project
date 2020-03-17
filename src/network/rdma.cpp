@@ -273,7 +273,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     expectNonZero(peer->sendMR = ibv_reg_mr(pd, peer->sendRegion, RDMA_BUF_SIZE, 0));
     expectNonZero(peer->recvMR = ibv_reg_mr(pd, peer->recvRegion, RDMA_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE));
     expectNonZero(peer->writeMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, 0));
-    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, IBV_ACCESS_LOCAL_WRITE));
+    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->readRegion, Block4K::capacity, IBV_ACCESS_LOCAL_WRITE));
 
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
@@ -368,6 +368,7 @@ void RDMASocket::postSend(int peerId, uint64_t length)
     wr.num_sge = 1;
     wr.imm_data = myNodeConf->id;
     wr.opcode = IBV_WR_SEND_WITH_IMM;
+    wr.send_flags = IBV_SEND_INLINE;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }

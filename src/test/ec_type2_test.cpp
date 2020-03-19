@@ -55,6 +55,9 @@ public:
         /* Initialize EC Matrices */
         gf_gen_cauchy1_matrix(encodeMatrix, N, K);
         ec_init_tables(K, P, &encodeMatrix[K * K], gfTables);
+
+        for (int i = 0; i < P; ++i)
+            parity[i] = encodeBuffer + i * Block4K::size;
     }
     ~ECAL2()
     {
@@ -125,7 +128,36 @@ public:
     }
     void writeBlock(Page &page)
     {
-        //TODO
+        auto pos = getBlockPosition(page.index);
+        uint64_t blockShift = allocTable->getShift(pos.row);
+        int shift = pos.row % N;
+
+        uint8_t *encodeSrc[K];
+        for (int i = 0; i < K; ++i) {
+            int peerId = (shift + i) % N;
+            if (peerId == myNodeConf->id)
+                encodeSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+            else {
+                uint8_t *base = rpcInterface->getRDMASocket()->getReadRegion(peerId);
+                rpcInterface->remoteReadFrom(peerId, blockShift, (uint64_t)base, Block4K::size, i);
+                encodeSrc[i] = base;
+            }
+        }
+
+        ec_encode_data(Block4K::size, K, P, gfTables, encodeSrc, parity);
+        
+        for (int i = 0; i < P; ++i) {
+            int peerId = (shift + i + K) % N;
+            if (peerId == myNodeConf->id)
+                memcpy(allocTable->at(pos.row), parity[i], Block4K::size);
+            else if (rpcInterface->isPeerAlive(peerId)) {
+                uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
+                memcpy(base, parity[i], Block4K::size);
+                rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, Block4K::size);
+            }
+            else
+                d_err("peer %d is dead, parity write failed.", peerId);
+        }
     }
 
 private:
@@ -135,6 +167,8 @@ private:
 
     uint8_t encodeMatrix[N * K];
     uint8_t gfTables[K * P * 32];
+    uint8_t encodeBuffer[P * Block4K::capacity];
+    uint8_t *parity[P];                             /* Points to encodeBuffer */
 
     struct DataPosition
     {

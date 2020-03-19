@@ -30,11 +30,11 @@ public:
         Page(uint64_t index = 0) : index(index) { }
     };
 
-    using BlockTy = RPCInterface::BlockTy;
-
     static const int K = 2;
     static const int P = 1;
     static const int N = K + P;
+
+    using BlockTy = DataBlock<Block4K::capacity / K>;
 
 public:
     explicit ECAL();

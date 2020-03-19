@@ -28,11 +28,7 @@ DEFINE_string(rwtype, "rand", "The block R/W pattern (either 'rand' or 'seq')");
 DEFINE_validator(rwtype, &rwtypeValidator);
 
 int N;
-bool contRW, readPoll;
-bool rwRand;
-
-uint32_t queue[MAXN + 5];
-int front = 0, rear = 0;
+bool contRW, rwRand;
 
 int main(int argc, char **argv)
 {
@@ -155,8 +151,10 @@ int main(int argc, char **argv)
     printf("Test finished.\n");
     printf("\n");
     printf("Write: total %ld us, avg. %.3lf us\n", writeUs, (double)writeUs / N);
-    printf("Read: %d correct, total %ld us, avg. %.3lf us\n", readCorrect, readUs, (double)readUs / N);
-    printf("Degraded Read: %d correct, total %ld us, avg. %.3lf us\n", degradedReadCorrect, degradedReadUs, (double)degradedReadUs / N);
+    printf("Read: %d/%d correct, total %ld us, avg. %.3lf us\n", readCorrect, N,
+            readUs, (double)readUs / N);
+    printf("Degraded Read: %d/%d correct, total %ld us, avg. %.3lf us\n", degradedReadCorrect, N,
+            degradedReadUs, (double)degradedReadUs / N);
     printf("\n");
 
     ecal.getRPCInterface()->syncAmongPeers();

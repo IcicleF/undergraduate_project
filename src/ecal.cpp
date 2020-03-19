@@ -46,7 +46,7 @@ ECAL::~ECAL()
 
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
-    static int decodeIndex[K], errIndex[K];
+    int decodeIndex[K], errIndex[K];
     uint8_t *recoverSrc[N], *recoverOutput[N];
 
     page.index = index;
@@ -57,7 +57,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     for (int i = 0, j = 0; i < K && j < N; ++j) {
         int peerId = j + pos.startNodeId;
         if (rpcInterface->isPeerAlive(peerId)) 
-            decodeIndex[i] = j;
+            decodeIndex[i++] = j;
         else if (j < K) {
             errIndex[errs] = j;
             recoverOutput[errs++] = page.page.data + j * BlockTy::size;
@@ -128,7 +128,7 @@ void ECAL::writeBlock(ECAL::Page &page)
         
         if (peerId == myNodeConf->id)
             memcpy(allocTable->at(pos.row), blk, BlockTy::size);
-        else {
+        else if (rpcInterface->isPeerAlive(peerId)) {
             uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
             rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size);

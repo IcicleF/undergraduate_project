@@ -13,9 +13,6 @@
 class RPCInterface
 {
 public:
-    using BlockTy = Block2K;
-
-public:
     explicit RPCInterface();
     ~RPCInterface();
 

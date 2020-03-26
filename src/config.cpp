@@ -5,8 +5,8 @@
 #include <fstream>
 
 #include <config.hpp>
-#include <message.hpp>
 #include <debug.hpp>
+#include <network/message.hpp>
 
 using namespace std;
 
@@ -18,7 +18,7 @@ std::atomic<bool> isRunning;
 
 // CmdLineConfig part
 
-/*
+/**
  * Set default parameters.
  * New memory is allocated for FUSE to free it later.
  */
@@ -109,12 +109,19 @@ NodeConfig ClusterConfig::findMyself() const
 
 // MemoryConfig part
 
-/*
+/**
  * Initializes from command line arguments.
  * Creates memory mapping for the pmem device specified.
  */
 MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
 {
+    bool expected = false;
+    if (!pmemOccupied.compare_exchange_weak(expected, true)) {
+        expectTrue(expected);
+        d_err("pmem device has been occupied!");
+        exit(-1);
+    }
+    
     if (base != 0)
         d_warn("might have been initialized, reset");
 
@@ -133,4 +140,10 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
 
     capacity = conf.pmemSize;
     d_info("MemoryConfig: [%p, %p)", (void *)base, (void *)(base + capacity));
+}
+
+MemoryConfig::~MemoryConfig()
+{
+    if (base != 0)
+        munmap((void *)base, capacity);
 }

@@ -16,8 +16,8 @@
 #include <isa-l.h>
 
 #include "config.hpp"
-#include "alloctable.hpp"
-#include "rpc.hpp"
+#include "datablock.hpp"
+#include "network/rpc.hpp"
 
 class ECAL
 {
@@ -58,7 +58,7 @@ private:
         DataPosition(const DataPosition &b) : row(b.row), startNodeId(b.startNodeId) { }
     };
 
-    AllocationTable<BlockTy> *allocTable = nullptr;
+    BlockPool<BlockTy> *allocTable = nullptr;
     RPCInterface *rpcInterface = nullptr;
     uint64_t capacity = 0;
 

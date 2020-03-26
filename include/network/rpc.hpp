@@ -1,10 +1,9 @@
 #if !defined(RPC_HPP)
 #define RPC_HPP
 
-#include "config.hpp"
+#include "../config.hpp"
 #include "rdma.hpp"
 #include "message.hpp"
-#include "alloctable.hpp"
 
 /*
  * Handles all RPC requests, both in and out.

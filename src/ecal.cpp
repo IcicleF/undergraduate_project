@@ -1,7 +1,7 @@
 #include <ecal.hpp>
 #include <debug.hpp>
 
-/*
+/**
  * Constructor initializes `memConf`.
  * Also it initializes `clusterConf`, `myNodeConf` by instantiating an RPCInterface.
  */
@@ -16,7 +16,7 @@ ECAL::ECAL()
     else
         memConf = new MemoryConfig(*cmdConf);
     
-    allocTable = new AllocationTable<BlockTy>();
+    allocTable = new BlockPool<BlockTy>();
     rpcInterface = new RPCInterface();
 
     if (clusterConf->getClusterSize() % N != 0) {

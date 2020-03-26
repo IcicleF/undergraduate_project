@@ -46,11 +46,11 @@ enum NodeType
 /* Node configuration */
 struct NodeConfig
 {
-    int id = -1;
-    std::string hostname;
-    std::string ipAddrStr;
-    std::string ibDevIPAddrStr;
-    NodeType type;
+    int id = -1;                        /* Pre-configured node ID */
+    std::string hostname;               /* Node's host name */
+    std::string ipAddrStr;              /* Node's IPv4 address */
+    std::string ibDevIPAddrStr;         /* Node's IB device IPv4 address */
+    NodeType type;                      /* Node's type */
 };
 
 /* Cluster configuration (in whole) */
@@ -84,7 +84,7 @@ class MemoryConfig
 public:
     explicit MemoryConfig(uint64_t base, uint64_t capacity) : base(base), capacity(capacity) { }
     explicit MemoryConfig(const CmdLineConfig &conf);
-    ~MemoryConfig() = default;
+    ~MemoryConfig();
 
     __always_inline void fullSync() const { msync((void *)base, capacity, MS_SYNC); }
 

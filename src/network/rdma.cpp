@@ -5,8 +5,8 @@
 
 #include <config.hpp>
 #include <debug.hpp>
-#include <rdma.hpp>
-#include <alloctable.hpp>
+#include <datablock.hpp>
+#include <network/rdma.hpp>
 
 RDMASocket::RDMASocket()
 {
@@ -196,7 +196,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
         auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
         if (msg->type == Message::MESG_REMOTE_MR) {
             memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
-            peer->connected = true;    
+            peer->connected = true;
             d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
 
             ++incomingConns;
@@ -481,7 +481,7 @@ int RDMASocket::pollSendCompletion(ibv_wc *wc)
     }
 }
 
-/*
+/**
  * Poll for next CQE in recv CQ (RDMA recv).
  * Cannot reuse pollSendCompletion code because there is a state (static variable).
  */

@@ -6,4 +6,3 @@ NamespaceIndentation: Inner
 UseTab: Never
 
 BreakBeforeBraces: Stroustrup
-...

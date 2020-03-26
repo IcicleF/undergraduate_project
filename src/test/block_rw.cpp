@@ -12,7 +12,7 @@ using namespace std::chrono;
 
 #define MAXN 1000000
 
-DEFINE_MAIN_INFO()
+DEFINE_MAIN_INFO();
 
 static bool rwtypeValidator(const char *flagname, const std::string &value)
 {

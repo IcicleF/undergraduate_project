@@ -6,7 +6,8 @@
 #include <isa-l.h>
 
 #include <config.hpp>
-#include <rpc.hpp>
+#include <datablock.hpp>
+#include <network/rpc.hpp>
 
 using namespace std;
 using namespace std::chrono;
@@ -40,7 +41,7 @@ public:
         else
             memConf = new MemoryConfig(*cmdConf);
         
-        allocTable = new AllocationTable<Block4K>();
+        allocTable = new BlockPool<Block4K>();
         rpcInterface = new RPCInterface();
 
         if (clusterConf->getClusterSize() != N) {
@@ -161,7 +162,7 @@ public:
     }
 
 private:
-    AllocationTable<Block4K> *allocTable = nullptr;
+    BlockPool<Block4K> *allocTable = nullptr;
     RPCInterface *rpcInterface = nullptr;
     uint64_t capacity = 0;
 
@@ -188,7 +189,7 @@ private:
     }
 };
 
-DEFINE_MAIN_INFO()
+DEFINE_MAIN_INFO();
 
 static bool rwtypeValidator(const char *flagname, const std::string &value)
 {

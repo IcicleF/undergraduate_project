@@ -3,9 +3,12 @@
 ## Critical
 
 * 读路径：读 k + Delta，取前 k 个解码
-* 写路径：写到固定位置即可（一个虚拟地址对应一个物理位置）。如果有 failed node 那么进行降级写，node 恢复后读出期间哪些块被写了，逐块解码恢复。
-  * 暂定 2PC，**需要创新**。
 * Failure Detection
+  * RDMA CM 可以检测 Disconnect 事件了，处理之
+
+Integration with LocoFS:
+* **DMS/FMS**: Kyoto Cabinet 需要跑在 NVM 上，不行的话换 KVDB
+* **FileServer**: 对接 ECAL
 
 ### 一些新想法
 
@@ -17,9 +20,4 @@
 
 在 4kB block 保持完整地塞进某个某个节点的情况下：
 
-* 写 parity 必须是分布式事务（所以要打包写）
-
-## Normal
-
-* 不同的节点类型
-* `MemoryConfig` 单独放在一个文件里
+* 写 parity 必须是分布式事务（所以要打包写降低开销）

@@ -1,4 +1,4 @@
-#include <rpc.hpp>
+#include <network/rpc.hpp>
 #include <debug.hpp>
 
 /*
@@ -98,7 +98,10 @@ void RPCInterface::syncAmongPeers()
     }
 }
 
-/* Stops RPCInterface listener threads and the underlying RDMASocket. */
+/**
+ * Stops RPCInterface listener threads and the underlying RDMASocket.
+ * This function should be called by ALL nodes after they ensure that everything has finished.
+ */
 void RPCInterface::stopListenerAndJoin()
 {
     if (std::this_thread::get_id() != mainThreadId) {
@@ -119,5 +122,23 @@ void RPCInterface::stopListenerAndJoin()
 
 void RPCInterface::rpcListen()
 {
-    
+    /* Initial RDMA recv */
+    if (shouldRun)
+        for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+            int peerId = (*clusterConf)[i].id;
+            socket->postReceive(peerId, RDMA_BUF_SIZE, peerId);
+        }
+
+    ibv_wc wc[2];
+    while (shouldRun) {
+        expectPositive(socket->pollRecvCompletion(wc));
+        int peerId = wc->imm_data;
+        auto *msg = reinterpret_cast<Message *>(socket->getRecvRegion(peerId));
+
+        if (msg->type == Message::MESG_RPC_CALL) {
+
+        }
+        else 
+            d_warn("unexpected message type %d caught by rpcListen", (int)msg->type);
+    }
 }

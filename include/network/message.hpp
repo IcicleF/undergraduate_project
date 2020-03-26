@@ -1,10 +1,17 @@
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
+
 #if !defined(MESSAGE_HPP)
 #define MESSAGE_HPP
 
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 
-#include "commons.hpp" 
+#include "../commons.hpp" 
 
 enum SpecialWRType
 {

@@ -1,3 +1,10 @@
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
+
 #if !defined(DATABLOCK_HPP)
 #define DATABLOCK_HPP
 

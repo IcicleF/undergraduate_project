@@ -1,5 +1,5 @@
 #include <debug.hpp>
-#include <fs/kvdb.hpp>
+#include <fs/kvstore.hpp>
 
 using std::string;
 namespace rdb = rocksdb;
@@ -10,7 +10,7 @@ KVStore::~KVStore()
         delete db;
 }
 
-/** Initialize a RocksDB KVDB instance. */
+/** Initialize a RocksDB KVSTORE instance. */
 void KVStore::init()
 {
     bool expected = false;

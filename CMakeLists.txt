@@ -4,6 +4,9 @@ set(CMAKE_CXX_STANDARD 14)
 set(COMPILER_FLAGS "-O3 -march=native -mtune=native -Wall -g")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS}")
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
 # Find dependencies
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/modules")
 find_package(Threads REQUIRED)
@@ -37,6 +40,10 @@ link_libraries(
 add_executable(main
     src/main.cpp
 )
+add_executable(dms
+    src/fs/dms.cpp
+    src/fs/kvstore.cpp
+)
 
 # Test executables
 add_executable(block_rw_test
@@ -48,4 +55,4 @@ add_executable(ec_type2_test
 )
 
 # Copy cluster.conf to binary directory
-configure_file(cluster.conf ${CMAKE_BINARY_DIR}/cluster.conf COPYONLY)
+configure_file(cluster.conf ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cluster.conf COPYONLY)

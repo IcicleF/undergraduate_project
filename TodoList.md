@@ -7,7 +7,7 @@
   * RDMA CM 可以检测 Disconnect 事件了，处理之
 
 Integration with LocoFS:
-* **DMS/FMS**: Kyoto Cabinet 需要跑在 NVM 上，不行的话换 KVDB
+* **DMS/FMS**: Kyoto Cabinet 需要跑在 NVM 上，不行的话换 KVSTORE
 * **FileServer**: 对接 ECAL
 
 ### 一些新想法

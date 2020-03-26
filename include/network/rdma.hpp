@@ -1,11 +1,9 @@
-/*
- * rdma.hpp
- * 
- * Copyright (c) 2020 Storage Research Group, Tsinghua University
- * 
- * Defines an RDMA interface to support RDMA send/recv/write/read primitives.
- * It hides RDMA details from users and notify user WR results with a hash table. 
- */
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
 
 #if !defined(RDMA_HPP)
 #define RDMA_HPP
@@ -23,7 +21,7 @@
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 
-#include "config.hpp"
+#include "../config.hpp"
 #include "message.hpp"
 
 /* Store necessary information for a connection with a peer. */

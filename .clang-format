@@ -1,8 +1,23 @@
 ---
 BasedOnStyle: Google
+Language: Cpp
+Standard: Cpp11
 ColumnLimit: 0
 IndentWidth: 4
-NamespaceIndentation: Inner
-UseTab: Never
 
-BreakBeforeBraces: Stroustrup
+AccessModifierOffset: -4
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterControlStatement: false
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  BeforeCatch: true
+  BeforeElse: true
+NamespaceIndentation: All
+DerivePointerAlignment: false
+PointerAlignment: Right
+UseTab: Never

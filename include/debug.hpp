@@ -1,11 +1,9 @@
-/*
- * debug.hpp
- * 
- * Copyright (c) 2020 Storage Research Group, Tsinghua University
- * 
- * One-line debugging macros to let users print messages to stdout.
- * These macros are equivalent to no-ops if NDEBUG is defined.
- */
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
 
 #if !defined(DEBUG_HPP)
 #define DEBUG_HPP
@@ -29,9 +27,9 @@
 
 #else
 
-#define d_info(f, args...)  ((void) 0)
-#define d_warn(f, args...)  ((void) 0)
-#define d_err(f, args...)   ((void) 0)
+#define d_info(f, args...)
+#define d_warn(f, args...)
+#define d_err(f, args...)
 
 #define expectZero(x)       x
 #define expectNonZero(x)    x

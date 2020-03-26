@@ -1,11 +1,16 @@
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
+
 #if !defined(RPC_HPP)
 #define RPC_HPP
 
-#include "../config.hpp"
 #include "rdma.hpp"
-#include "message.hpp"
 
-/*
+/**
  * Handles all RPC requests, both in and out.
  * One node should only have only one RPC interface.
  */

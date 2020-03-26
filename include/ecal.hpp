@@ -1,14 +1,9 @@
-/*
- * ecal.h
- * 
- * Copyright (c) 2020 Storage Research Group, Tsinghua University
- * 
- * Implements a midware to provide highly-available access to distributed NVM.
- * The LRC (Local Reconstruction Code) erasure coding is used to provide availability.
- * Provides block-granularity access to higher levels.
- * 
- * Based on ISA-L.
- */
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
 
 #if !defined(ECAL_HPP)
 #define ECAL_HPP

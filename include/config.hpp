@@ -1,10 +1,9 @@
-/*
- * config.hpp
- * 
- * Copyright (c) 2020 Storage Research Group, Tsinghua University
- * 
- * Define all configuration classes.
- */
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
 
 #if !defined(CONFIG_HPP)
 #define CONFIG_HPP

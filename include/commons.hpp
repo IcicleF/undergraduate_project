@@ -1,11 +1,9 @@
-/*
- * commons.hpp
- * 
- * Copyright (c) 2020 Storage Research Group, Tsinghua University
- * 
- * Defines necessary includes and constants.
- * All other headers (should) include this file.
- */
+/******************************************************************
+ * This file is part of Galois.                                   *
+ *                                                                *
+ * Galois: Highly-available NVM Distributed File System           *
+ * Copyright (c) 2020 Storage Research Group, Tsinghua University *
+ ******************************************************************/
 
 #if !defined(COMMONS_HPP)
 #define COMMONS_HPP
@@ -18,6 +16,7 @@
 #include <unistd.h>
 
 // C++ makes me happy
+#include <vector>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -61,7 +60,10 @@
 #endif
 #define __packed __attribute__((packed))
 
+/* Stores thread ID of main thread to enable checks when joining */
 extern std::thread::id mainThreadId;
+
+/* Ensures that the persistent memory space is used only once */
 extern std::atomic<bool> pmemOccupied;
 
 /*

@@ -28,8 +28,10 @@ set(LIBS
     ibverbs
     rdmacm
     gflags
-    glog
-    rocksdb
+    boost_system
+	boost_filesystem
+    boost_serialization
+    kyotocabinet
 )
 link_libraries(
     ${LIBS}
@@ -37,12 +39,20 @@ link_libraries(
 )
 
 # Main executables
-add_executable(main
-    src/main.cpp
+add_executable(DMServer
+    src/fs/DMServer.cpp
+    src/fs/DMStore.cpp
+    src/fs/KVStore.cpp
+    src/fs/EntryList.cpp
 )
-add_executable(dms
-    src/fs/dms.cpp
-    src/fs/kvstore.cpp
+add_executable(FMServer
+    src/fs/FMServer.cpp
+    src/fs/FMStore.cpp
+    src/fs/KVStore.cpp
+    src/fs/EntryList.cpp
+)
+add_executable(DataServer
+    src/fs/DataServer.cpp
 )
 
 # Test executables

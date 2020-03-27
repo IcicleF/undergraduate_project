@@ -120,6 +120,15 @@ void RPCInterface::stopListenerAndJoin()
     socket->stopListenerAndJoin();
 }
 
+void RPCInterface::registerRPCProcessor(void (*rpcProc)(const RPCMessage *, RPCMessage *))
+{
+    rpcProcessor = rpcProc;
+}
+
+/** 
+ * Listen for incoming RPC requests.
+ * @note This function should run as a new thread.
+ */
 void RPCInterface::rpcListen()
 {
     /* Initial RDMA recv */
@@ -130,15 +139,41 @@ void RPCInterface::rpcListen()
         }
 
     ibv_wc wc[2];
+    RPCMessage request;
+    Message response;
+    response.type = Message::MESG_RPC_RESPONSE;
     while (shouldRun) {
         expectPositive(socket->pollRecvCompletion(wc));
-        int peerId = wc->imm_data;
+        int peerId = WRID_PEER(wc->wr_id);
         auto *msg = reinterpret_cast<Message *>(socket->getRecvRegion(peerId));
 
         if (msg->type == Message::MESG_RPC_CALL) {
+            auto const *rpcMsg = &msg->data.rpc;
+            memcpy(&request, rpcMsg, sizeof(RPCMessage));
+            socket->postReceive(peerId, RDMA_BUF_SIZE, peerId);
 
+            if (rpcProcessor)
+                rpcProcessor(&request, &response.data.rpc);
+            memcpy(socket->getSendRegion(peerId), &response, sizeof(Message));
+            socket->postSend(peerId, sizeof(Message));
         }
         else 
             d_warn("unexpected message type %d caught by rpcListen", (int)msg->type);
     }
+
+    d_info("RPC listener safely exited");
+}
+
+/** Invoke an RPC. */
+void RPCInterface::rpcCall(int peerId, const Message *request, Message *response)
+{
+    memcpy(socket->getSendRegion(peerId), request, sizeof(Message));
+    socket->postSend(peerId, sizeof(Message));
+    socket->postReceive(peerId, sizeof(Message), peerId);
+    
+    ibv_wc wc[2];
+    expectPositive(socket->pollRecvCompletion(wc));
+    memcpy(response, socket->getRecvRegion(peerId), sizeof(Message));
+    if (response->type != Message::MESG_RPC_RESPONSE)
+        d_err("unexpected response type: %d", (int)response->type);
 }

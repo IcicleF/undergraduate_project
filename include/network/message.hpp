@@ -8,6 +8,9 @@
 #if !defined(MESSAGE_HPP)
 #define MESSAGE_HPP
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/statvfs.h>
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 
@@ -24,10 +27,29 @@ struct RPCMessage
 {
     enum {
         RPC_UNDEF = 0,
-        RPC_REQUEST,
-        RPC_RESPONSE,
-        RPC_INVALID
+        RPC_OPEN,
+        RPC_ACCESS,
+        RPC_CREATE,
+        //RPC_RENAME,       // RENAME is currently to-do
+        RPC_REMOVE,
+        RPC_STAT,
+        RPC_MKDIR,
+        RPC_RMDIR,
+        RPC_OPENDIR,
+        RPC_READDIR,
     } type;
+    int result;
+    union
+    {
+        uint8_t raw[512];
+        uint64_t raw64[64];
+        char path[256];
+    };
+    union
+    {
+        int mode;
+        int flags;
+    };
 };
 
 struct Message
@@ -47,5 +69,7 @@ struct Message
         RPCMessage rpc;
     } data;
 };
+
+static_assert(sizeof(Message) < RDMA_BUF_SIZE, "Message too large");
 
 #endif // MESSAGE_HPP

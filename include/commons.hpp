@@ -44,6 +44,9 @@
 #define RDMA_BUF_SIZE           4096            /* RDMA send/recv memory buffer size */
 #define ALLOC_TABLE_MAGIC       0xAB71E514      /* Allocation table magic number */
 
+#define MAX_PATH_LEN            255             /* Max path length */
+#define MAX_READDIR_LEN         511             /* Max readdir result string length */ 
+
 /* Flush cache line containing `addr`. */
 #define __mem_clflush(addr)                 \
     asm volatile (                          \

@@ -39,15 +39,16 @@ public:
         socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
     }
     
+    void registerRPCProcessor(void (*rpcProc)(const RPCMessage *, RPCMessage *));
     void rpcListen();
-    int rpcProcessCall(int peerId, const Message *message, Message *response);
-    int remoteRPCCall(int peerId, const Message *request, Message *response);
+    void rpcCall(int peerId, const Message *request, Message *response);
 
     __always_inline RDMASocket *getRDMASocket() const { return socket; }
 
 private:
     RDMASocket *socket = nullptr;
     std::thread rpcListener;
+    void (*rpcProcessor)(const RPCMessage *request, RPCMessage *response) = nullptr;
 
     short peerAliveStatus[MAX_NODES];
     bool shouldRun;

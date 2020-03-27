@@ -51,8 +51,11 @@ add_executable(FMServer
     src/fs/KVStore.cpp
     src/fs/EntryList.cpp
 )
-add_executable(DataServer
-    src/fs/DataServer.cpp
+# add_executable(DataServer
+#     src/fs/DataServer.cpp
+# )
+add_executable(LocofsClient
+    src/fs/LocofsClient.cpp
 )
 
 # Test executables

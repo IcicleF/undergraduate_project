@@ -112,6 +112,7 @@ int main(int argc, char **argv)
     signal(SIGINT, CtrlCHandler);
     COLLECT_MAIN_INFO();
 
+    DMServer::getInstance();
     cmdConf = new CmdLineConfig();
     ECAL ecal;
     ecal.getRPCInterface()->registerRPCProcessor(processDMRPC);

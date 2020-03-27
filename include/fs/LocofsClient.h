@@ -15,13 +15,17 @@
 class LocofsClient
 {
 public:
-    LocofsClient(){};
-    ~LocofsClient(){};
+    LocofsClient() = default;
+    ~LocofsClient() = default;
 
     bool mount(const std::string &conf);
+    void stop()
+    {
+        ecal.getRPCInterface()->stopListenerAndJoin();
+    }
 
     bool write(const std::string &path, const char *buf, int64_t len, int64_t off);
-    int64_t read(const std::string &path, std::string &buf, int64_t len, int64_t off);
+    int64_t read(const std::string &path, char *buf, int64_t len, int64_t off);
 
     bool mkdir(const std::string &path, int32_t mode);
     bool open(const std::string &path, int32_t flags);

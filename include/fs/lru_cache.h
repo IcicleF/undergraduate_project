@@ -8,8 +8,8 @@
 #ifndef LRU_CACHE_H
 #define LRU_CACHE_H
 
-#include <stdlib.h>
-//#include <iostream>
+#include <cstdlib>
+#include <unistd.h>
 #include <map>
 #include <time.h>
 #include <pthread.h>

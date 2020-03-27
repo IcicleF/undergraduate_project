@@ -96,10 +96,9 @@ int32_t FMStore::create(const std::string &Key, const FileAccessInode &fa)
     fcc.atime = time(NULL);
     fcc.mtime = time(NULL);
     fcc.origin_name = Key;
-    fcc.block_size = 4096 << 10;
+    fcc.block_size = 4096;
     fcc.size = 0;
-    fcc.suuid = suuid_counter;
-    suuid_counter++;
+    fcc.suuid = suuid_counter++;
     fcc.sid = sid_num;
 
     /**

@@ -6,6 +6,11 @@
 * Failure Detection
   * RDMA CM 可以检测 Disconnect 事件了，处理之
 
+* ECAL 部分 block 写入
+* ECAL 无复制写入（指针的 `Page`）
+
+* 区分 send message 和 response message
+
 Integration with LocoFS:
 * cluster.conf 增加各节点类型，parseConfig 那里跟随修改
 

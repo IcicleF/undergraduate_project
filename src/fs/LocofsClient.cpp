@@ -41,25 +41,34 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *  Write data begin
      */
     int64_t block_size = loco_st.block_size;
-    int64_t lenth = len;
     int64_t offset = off;
     int64_t start = 0;
-    while (lenth > 0) {
-        int64_t block_num = offset / block_size;
-        int64_t block_off = offset % block_size;
-        int64_t block_len = block_size - block_off;
-        block_len = lenth > block_len ? block_len : lenth;
+
+    ECAL::Page page;
+    std::hash<std::string> hash_key;
+    while (len > 0) {
+        int64_t block_num = offset / block_size;            // # of data block
+        int64_t block_off = offset % block_size;            // offset in the current block
+        int64_t block_len = block_size - block_off;         
+        block_len = len > block_len ? block_len : len;      // length in the current block
         std::string Key_Obj;
         _get_object_key(path, block_num, Key_Obj);
-        std::string b;
-        b.append(buf + start, block_len);
-        if (SERVER(data_trans, Key_Obj).write(Key_Obj, block_len, block_off, b) < 0) {
-            //LOG(ERROR)<< path << " Write Data Block(Obj) fail";
-            return false;
+
+        uint64_t blkno = hash_key(Key_Obj) % ecal.getClusterCapacity();
+        if (block_off || block_off + block_len < Block4K::size) {
+            /* Needs a read; TODO: remove read */
+            ecal.readBlock(blkno, page);
+            memcpy(page.page.data + block_off, buf + start, block_len);
+            ecal.writeBlock(page);
         }
-        //LOG(INFO)<<path<<" Key_Obj="<<Key_Obj<<" block_num="<<block_num<<" block_off="<< block_off<<" block_len="<<block_len<<" block_size="<<block_size;
+        else {
+            /* Full page */
+            memcpy(page.page.data, buf + start, block_len);
+            ecal.writeBlock(page);
+        }
+        
         start += block_len;
-        lenth -= block_len;
+        len -= block_len;
         offset += block_len;
     }
 
@@ -67,9 +76,9 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *  Get Key_FileInode
      */
     std::string Key_File;
-    if (_get_file_key(path, Key_File) == false) {
+    if (_get_file_key(path, Key_File) == false)
         return false;
-    }
+    
     /**
      *  Update FileContentInode
      */
@@ -78,88 +87,83 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     fci.size = fci.size > (off + len) ? fci.size : (off + len);
     fci.mtime = time(NULL);
     fci.atime = time(NULL);
-    if (SERVER(file_trans, Key_File).setContent(Key_File, fci) < 0) {
-        //LOG(ERROR) << path << " update FileContentInode fail";
-        return false;
-    }
-    //LOG(INFO) << path << " update FileContentInode success";
-    /**
-     *  remove FileStat cache, cause read only
-     */
-    // if (FCache.remove(Key_File) == false) {
-    //     //LOG(ERROR) << path << " remove LocalCache fail";
-    // }
-    // //LOG(INFO) << path << " remove LocalCache success";
-    //LOG(WARNING)<<" <<< File Write End >>> "<< path << " write sucess"<<" thread_id="<<pthread_self();
-    return true;
+    
+    Message request, response;
+    request.type = Message::MESG_RPC_CALL;
+    request.data.rpc.type = RPCMessage::RPC_CSIZE;
+    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
+    request.data.rpc.path[MAX_PATH_LEN] = 0;
+    memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
+    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+
+    return (response.data.rpc.result == 0);
 }
 
-int64_t LocofsClient::read(const std::string &path, std::string &buf, int64_t len, int64_t off)
+int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int64_t off)
 {
     //LOG(WARNING)<< " <<< File Read Begin >>> " << path << " lenth="<<len<< " offset=" << off;
     /**
      *  Get file stat
      */
     struct loco_file_stat loco_st;
-    if (_get_file_stat(path, loco_st) == false) {
+    if (_get_file_stat(path, loco_st) == false)
         return false;
-    }
 
     /**
      *  Read data begin
      */
     int64_t block_size = loco_st.block_size;
     int64_t size = loco_st.st.st_size;
-    int64_t lenth = size < len ? size : len;
+    len = size < len ? size : len;
     int64_t offset = off;
-    if (off + lenth > size) {
+    int64_t start = 0;
+    if (off + len > size) {
         //LOG(ERROR) << path << " read failed, read size is large than file size";
         return -1;
     }
-    while (lenth > 0) {
-        int64_t block_num = offset / block_size;
-        int64_t block_off = offset % block_size;
+
+    ECAL::Page page;
+    std::hash<std::string> hash_key;
+    while (len > 0) {
+        int64_t block_num = offset / block_size;            // # of data block
+        int64_t block_off = offset % block_size;            // offset in the current block
         int64_t block_len = block_size - block_off;
-        block_len = lenth > block_len ? block_len : lenth;
+        block_len = len > block_len ? block_len : len;      // length in the current block
         std::string Key_Obj;
         _get_object_key(path, block_num, Key_Obj);
-        std::string tmp;
-        if (SERVER(data_trans, Key_Obj).read(Key_Obj, block_len, block_off, tmp) < 0) {
-            //LOG(ERROR)<< path << " Read Data Block(Obj) fail";
-            return false;
-        }
-        //LOG(INFO)<<path<<" Key_Obj="<<Key_Obj<<" block_num="<<block_num<<" block_off"<< block_off<<" block_len="<<block_len;
-        buf.append(tmp.c_str(), block_len);
-        lenth -= block_len;
+
+        uint64_t blkno = hash_key(Key_Obj) % ecal.getClusterCapacity();
+        ecal.readBlock(blkno, page);
+        memcpy(buf + start, page.page.data + block_off,  block_len);
+        
+        start += block_len;
+        len -= block_len;
         offset += block_len;
     }
-    //LOG(INFO)<<" Read Content: "<<buf.substr(0,20)<< "...";
 
     /**
      *  Get Key_FileInode
      */
     std::string Key_File;
-    if (_get_file_key(path, Key_File) == false) {
+    if (_get_file_key(path, Key_File) == false)
         return false;
-    }
+    
     /**
      *  Update FileContentInode
      */
     FileContentInode fci;
     _set_ContentInode(loco_st, fci);
     fci.atime = time(NULL);
-    if (SERVER(file_trans, Key_File).setContent(Key_File, fci) == -1) {
-        //LOG(ERROR) << path << " update metadata failed";
-    }
-    else {
-        //LOG(INFO) << path << " metadata updated";
-    }
-    /**
-     *  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     *  should also update cache, if FileContentInode in cache
-     */
-    //LOG(WARNING)<<" <<< File Read End >>> "<< path << " Read sucess"<<" thread id"<<pthread_self();
-    return buf.size();
+
+    Message request, response;
+    request.type = Message::MESG_RPC_CALL;
+    request.data.rpc.type = RPCMessage::RPC_CSIZE;
+    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
+    request.data.rpc.path[MAX_PATH_LEN] = 0;
+    memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
+    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+
+    return start;
 }
 
 bool LocofsClient::mkdir(const std::string &path, int32_t mode)
@@ -498,4 +502,46 @@ bool LocofsClient::_check_path(const std::string &path, std::string &p)
     if (p.length() != 1 && p[p.length() - 1] == '/')
         p.erase(p.end() - 1);
     return true;
+}
+
+
+/* Main function part */
+#include <chrono>
+
+DEFINE_MAIN_INFO();
+
+int main(int argc, char **argv)
+{
+    using namespace std;
+    using namespace std::chrono;
+
+    COLLECT_MAIN_INFO();
+
+    cmdConf = new CmdLineConfig();
+    LocofsClient loco;
+
+    expectTrue(loco.mount(""));
+    
+    loco.mkdir("/test", 0644);
+    loco.open("/test/0001", O_RDWR | O_CREAT);
+
+    char buf[4 << 20];
+    for (int i = 0; i < (4 << 20); ++i)
+        buf[i] = i % 64 + 32;
+    string filename = "/test/0001";
+    const int N = 10000;
+
+    auto start = steady_clock::now();
+    for (int i = 0; i < N; ++i) {
+        loco.write(filename, buf, 4 << 20, 0);
+    }
+    auto end = steady_clock::now();
+    auto timespan = duration_cast<microseconds>(end - start).count();
+
+    printf("OK\n");
+    printf("Write 4MB: %.3lf us\n", (double)timespan / N);
+
+    loco.stop();
+
+    return 0;
 }

@@ -50,6 +50,12 @@ void processFMRPC(const RPCMessage *request, RPCMessage *response)
             response->result = fms->fm->access(path, fai);
             break;
         }
+        case RPCMessage::RPC_CSIZE: {
+            string path = request->path;
+            auto *pfci = reinterpret_cast<const FileContentInode *>(request->raw2);
+            response->result = fms->fm->csize(path, *pfci);
+            break;
+        }
         case RPCMessage::RPC_STAT: {
             string path = request->path;
             loco_file_stat st;
@@ -113,6 +119,7 @@ int main(int argc, char **argv)
     signal(SIGINT, CtrlCHandler);
     COLLECT_MAIN_INFO();
 
+    FMServer::getInstance();
     cmdConf = new CmdLineConfig();
     ECAL ecal;
     ecal.getRPCInterface()->registerRPCProcessor(processFMRPC);

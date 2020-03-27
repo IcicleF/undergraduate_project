@@ -31,6 +31,7 @@ struct RPCMessage
         RPC_ACCESS,
         RPC_CREATE,
         //RPC_RENAME,       // RENAME is currently to-do
+        RPC_CSIZE,
         RPC_REMOVE,
         RPC_STAT,
         RPC_MKDIR,
@@ -38,17 +39,22 @@ struct RPCMessage
         RPC_OPENDIR,
         RPC_READDIR,
     } type;
+
     int result;
-    union
-    {
-        uint8_t raw[512];
-        uint64_t raw64[64];
-        char path[256];
-    };
     union
     {
         int mode;
         int flags;
+    };
+    union
+    {
+        struct
+        {
+            char path[256];
+            uint8_t raw2[256];
+        };
+        uint8_t raw[512];
+        uint64_t raw64[64];
     };
 };
 

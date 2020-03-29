@@ -35,6 +35,7 @@
 #define MAX_HOSTNAME_LEN        128             /* Maximum of host name length of all nodes */
 
 #define ADDR_RESOLVE_TIMEOUT    3000            /* rdma_resolve_addr timeout in ms */
+#define EC_POLL_TIMEOUT         10              /* rdma_event_channel poll timeout in ms */
 #define MAX_REQS                16              /* rdma_accept initiator_depth */
 #define MAX_QP_DEPTH            1024            /* Maximum QPEs/CQEs in QPs/CQs */
 #define MAX_CQS                 2               /* Maximum of CQs held by a single node */

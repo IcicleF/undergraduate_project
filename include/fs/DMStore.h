@@ -5,8 +5,6 @@
 #include <ctime>
 #include <string>
 
-#include <boost/smart_ptr.hpp>
-
 #include "EntryList.h"
 #include "KVStore.h"
 #include "inode.hpp"

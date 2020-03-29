@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+#include <sys/poll.h>
 
 #include <config.hpp>
 #include <debug.hpp>
@@ -36,6 +37,13 @@ RDMASocket::RDMASocket()
     }
 
     expectNonZero(ec = rdma_create_event_channel());
+    /* Make event channel non-blocking */
+    int flags = fcntl(ec->fd, F_GETFL);
+    if (fcntl(ec->fd, F_SETFL, flags | O_NONBLOCK) < 0)
+        d_err("cannot change EC fd to non-blocking");
+    else
+        d_info("successfully changed EC fd to non-blocking");
+
     expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
     expectZero(rdma_listen(listener, MAX_NODES));
@@ -102,7 +110,10 @@ RDMASocket::~RDMASocket()
         rdma_destroy_event_channel(ec);
 }
 
-/* Stop all listener threads and join them to the current thread */
+/**
+ * Stop RDMA event channel listener and joins the listener thread.
+ * @note RDMA service are not disabled, but no new connections can be built.
+ */
 void RDMASocket::stopListenerAndJoin()
 {
     if (std::this_thread::get_id() != mainThreadId) {
@@ -131,7 +142,20 @@ void RDMASocket::listenRDMAEvents()
     handlers[RDMA_CM_EVENT_DISCONNECTED] = &RDMASocket::onDisconnected;
 
     rdma_cm_event *event;
-    while (shouldRun && rdma_get_cm_event(ec, &event) == 0) {
+    struct pollfd pfd = {
+        .fd = ec->fd,
+        .events = POLLIN,
+        .revents = 0
+    };
+    while (shouldRun) {
+        int ret = 0;
+        do { 
+            ret = poll(&pfd, 1, EC_POLL_TIMEOUT); 
+        } while (shouldRun && ret == 0);
+        if (!shouldRun)
+            break;
+        expectZero(rdma_get_cm_event(ec, &event));
+        
         EventHandler handler = handlers[event->event];
         if (handler)
             (this->*handler)(event);
@@ -139,6 +163,8 @@ void RDMASocket::listenRDMAEvents()
             d_warn("RDMA CM event type %d not handled", (int)event->event);
         rdma_ack_cm_event(event);
     }
+
+    d_info("RDMASocket has stopped listening EC events.");
 }
 
 /* As a client, handle when remote address is resolved */
@@ -233,7 +259,7 @@ void RDMASocket::buildResources(ibv_context *ctx)
     for (int i = 0; i < MAX_CQS; ++i) {
         expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
         expectNonZero(cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel[i], 0));
-        expectZero(ibv_req_notify_cq(cq[i], 0));
+        // expectZero(ibv_req_notify_cq(cq[i], 0));
     }
     
     int mrFlags = IBV_ACCESS_LOCAL_WRITE |
@@ -463,44 +489,21 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
 /* Poll for next CQE in send CQ (RDMA read). */
 int RDMASocket::pollSendCompletion(ibv_wc *wc)
 {
-    static ibv_cq *cq = nullptr;
-    void *ctx;
-
-    while (true) {
-        if (!cq) {
-            expectZero(ibv_get_cq_event(compChannel[CQ_SEND], &cq, &ctx));
-            ibv_ack_cq_events(cq, 1);
-            expectZero(ibv_req_notify_cq(cq, 0));
-        }
-
-        int ret = ibv_poll_cq(cq, 1, wc);
-        if (!ret)
-            cq = nullptr;
-        else
+    while (shouldRun) {
+        int ret = ibv_poll_cq(cq[CQ_SEND], 1, wc);
+        if (ret)
             return ret;
     }
+    return 0;
 }
 
-/**
- * Poll for next CQE in recv CQ (RDMA recv).
- * Cannot reuse pollSendCompletion code because there is a state (static variable).
- */
+/** Poll for next CQE in recv CQ (RDMA recv). */
 int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
-    static ibv_cq *cq = nullptr;
-    void *ctx;
-
-    while (true) {
-        if (!cq) {
-            expectZero(ibv_get_cq_event(compChannel[CQ_RECV], &cq, &ctx));
-            ibv_ack_cq_events(cq, 1);
-            expectZero(ibv_req_notify_cq(cq, 0));
-        }
-
-        int ret = ibv_poll_cq(cq, 1, wc);
-        if (!ret)
-            cq = nullptr;
-        else
+    while (shouldRun) {
+        int ret = ibv_poll_cq(cq[CQ_RECV], 1, wc);
+        if (ret)
             return ret;
     }
+    return 0;
 }

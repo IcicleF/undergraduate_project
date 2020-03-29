@@ -24,10 +24,29 @@ std::atomic<bool> isRunning;
  */
 CmdLineConfig::CmdLineConfig()
 {
-    clusterConfigFile = "cluster.conf";
-    pmemDeviceName = "/mnt/gjfs/sim0";
-    pmemSize = 1lu << 20;
-    tcpPort = 34344;
+    char *env;
+
+    if ((env = getenv("CLUSTERCONF")))
+        clusterConfigFile = env;
+    else
+        clusterConfigFile = "cluster.conf";
+    
+    if ((env = getenv("PMEMDEV")))
+        pmemDeviceName = env;
+    else
+        pmemDeviceName = "/mnt/gjfs/sim0";
+    
+    if ((env = getenv("PMEMSZ")))
+        pmemSize = std::stoi(std::string(env));
+    else
+        pmemSize = 1lu << 20;
+    
+    if ((env = getenv("PORT")))
+        pmemSize = std::stoi(std::string(env));
+    else
+        tcpPort = 33344;
+
+    /* getenv results should NOT be freed, so it is left as is */
 }
 
 // ClusterConfig part

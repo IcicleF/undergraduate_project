@@ -28,8 +28,11 @@ RPCInterface::RPCInterface()
     memset(peerAliveStatus, 0, sizeof(peerAliveStatus));
     socket = new RDMASocket();
 
-    shouldRun = true;
-    rpcListener = std::thread(&RPCInterface::rpcListen, this);
+    shouldRun = (myNodeConf->id != 2);      // TODO: Use clusterConf to decide
+    if (shouldRun)
+        rpcListener = std::thread(&RPCInterface::rpcListen, this);
+    else
+        d_warn("RPC listener is inactivated. No inbound RPC requests will be served.");
 }
 
 /* Destructor deallocates `clusterConf` and `myNodeConf`. */
@@ -99,8 +102,8 @@ void RPCInterface::syncAmongPeers()
 }
 
 /**
- * Stops RPCInterface listener threads and the underlying RDMASocket.
- * This function should be called by ALL nodes after they ensure that everything has finished.
+ * Stops incoming-RPC listener and joins the listener thread.
+ * @note Outbounds RPCs and raw RDMA services are not disabled.
  */
 void RPCInterface::stopListenerAndJoin()
 {
@@ -108,16 +111,13 @@ void RPCInterface::stopListenerAndJoin()
         d_err("cannot execute stopListenerAndJoin from non-main threads");
         return;
     }
-    if (!shouldRun)
-        return;
     
+    d_info("first, try to stop RDMASocket...");
+    socket->stopListenerAndJoin();
+
     shouldRun = false;
     if (rpcListener.joinable())
         rpcListener.join();
-    
-    d_info("all joinable listener threads have joined");
-    d_info("now, try to stop RDMASocket...");
-    socket->stopListenerAndJoin();
 }
 
 void RPCInterface::registerRPCProcessor(void (*rpcProc)(const RPCMessage *, RPCMessage *))
@@ -143,10 +143,14 @@ void RPCInterface::rpcListen()
     Message response;
     response.type = Message::MESG_RPC_RESPONSE;
     while (shouldRun) {
-        expectPositive(socket->pollRecvCompletion(wc));
+        int ret = socket->pollRecvCompletion(wc);
+        if (!ret) {
+            d_info("pollRecvCompletion returned 0, indicating RDMASocket has stopped.");
+            break;
+        }
         int peerId = WRID_PEER(wc->wr_id);
         auto *msg = reinterpret_cast<Message *>(socket->getRecvRegion(peerId));
-
+        
         if (msg->type == Message::MESG_RPC_CALL) {
             auto const *rpcMsg = &msg->data.rpc;
             memcpy(&request, rpcMsg, sizeof(RPCMessage));
@@ -161,10 +165,15 @@ void RPCInterface::rpcListen()
             d_warn("unexpected message type %d caught by rpcListen", (int)msg->type);
     }
 
-    d_info("RPC listener safely exited");
+    d_info("RPCInterface has stopped listening inbounds RPCs.");
 }
 
-/** Invoke an RPC. */
+/**
+ * Invoke an RPC.
+ * @note Currently you can't serve and post RPC requests simutaneously, because
+ *       they will race for the completion entry. This is probably a TODO. Maybe
+ *       it is possible to use a cond_var and let these functions all wait on it.
+ */
 void RPCInterface::rpcCall(int peerId, const Message *request, Message *response)
 {
     memcpy(socket->getSendRegion(peerId), request, sizeof(Message));

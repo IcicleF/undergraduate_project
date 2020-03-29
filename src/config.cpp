@@ -27,7 +27,7 @@ CmdLineConfig::CmdLineConfig()
     clusterConfigFile = "cluster.conf";
     pmemDeviceName = "/mnt/gjfs/sim0";
     pmemSize = 1lu << 20;
-    tcpPort = 34343;
+    tcpPort = 34344;
 }
 
 // ClusterConfig part

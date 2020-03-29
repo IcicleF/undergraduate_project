@@ -368,7 +368,7 @@ void RDMASocket::postSend(int peerId, uint64_t length)
     wr.num_sge = 1;
     wr.imm_data = myNodeConf->id;
     wr.opcode = IBV_WR_SEND_WITH_IMM;
-    wr.send_flags = IBV_SEND_INLINE;
+    //wr.send_flags = IBV_SEND_INLINE;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }

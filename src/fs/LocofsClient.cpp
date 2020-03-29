@@ -532,7 +532,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < (4 << 20); ++i)
         buf[i] = i % 64 + 32;
     string filename = "/test/0001";
-    const int N = 10000;
+    const int N = 20;
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {

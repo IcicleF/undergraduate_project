@@ -42,11 +42,14 @@ CmdLineConfig::CmdLineConfig()
         pmemSize = 1lu << 20;
     
     if ((env = getenv("PORT")))
-        pmemSize = std::stoi(std::string(env));
+        tcpPort = std::stoi(std::string(env));
     else
         tcpPort = 33344;
 
     /* getenv results should NOT be freed, so it is left as is */
+    d_info("pmem: %s", pmemDeviceName.c_str());
+    d_info("pmem size: %lu", pmemSize);
+    d_info("tcp port: %d", tcpPort);
 }
 
 // ClusterConfig part

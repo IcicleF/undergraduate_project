@@ -521,6 +521,9 @@ int main(int argc, char **argv)
     LocofsClient loco;
 
     expectTrue(loco.mount(""));
+
+    printf("LocoFS Client mounted.\n");
+    fflush(stdout);
     
     loco.mkdir("/test", 0644);
     loco.open("/test/0001", O_RDWR | O_CREAT);

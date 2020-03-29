@@ -115,14 +115,20 @@ int main(int argc, char **argv)
     DMServer::getInstance();
     cmdConf = new CmdLineConfig();
     ECAL ecal;
+
+    printf("DMServer: ECAL constructed & exited ctor.\n");
+    fflush(stdout);
+
     ecal.getRPCInterface()->registerRPCProcessor(processDMRPC);
     
-    printf("DMServer: main thread sleep.");
+    printf("DMServer: main thread sleep.\n");
+    fflush(stdout);
 
     while (!ctrlCPressed)
         ctrlCCond.wait(lock);
 
-    printf("DMServer: Ctrl-C, stopListenerAndJoin");
+    printf("DMServer: Ctrl-C, stopListenerAndJoin\n");
+    fflush(stdout);
 
     ecal.getRPCInterface()->stopListenerAndJoin();
 

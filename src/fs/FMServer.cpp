@@ -124,12 +124,14 @@ int main(int argc, char **argv)
     ECAL ecal;
     ecal.getRPCInterface()->registerRPCProcessor(processFMRPC);
     
-    printf("FMServer: main thread sleep.");
+    printf("FMServer: main thread sleep.\n");
+    fflush(stdout);
 
     while (!ctrlCPressed)
         ctrlCCond.wait(lock);
 
-    printf("FMServer: Ctrl-C, stopListenerAndJoin");
+    printf("FMServer: Ctrl-C, stopListenerAndJoin\n");
+    fflush(stdout);
 
     ecal.getRPCInterface()->stopListenerAndJoin();
 

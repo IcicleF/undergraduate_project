@@ -10,6 +10,7 @@
  */
 ECAL::ECAL()
 {
+    d_info("ECAL none");
     if (cmdConf == nullptr) {
         d_err("cmdConf should be initialized!");
         exit(-1);

@@ -534,12 +534,15 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
+    srand(time(0));
     const int M = 16 << 10;
     char buf[M];
     for (int i = 0; i < M; ++i)
-        buf[i] = i % 64 + 32;
+        buf[i] = rand() % 64 + 32;
     ;
     const int N = 100;
+
+    d_info("start r/w...");
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
@@ -548,8 +551,17 @@ int main(int argc, char **argv)
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
 
-    printf("OK\n");
+    //printf("OK\n");
     printf("Write %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
+
+    start = steady_clock::now();
+    for (int i = 0; i < N; ++i) {
+        expectTrue(loco.read(filename, buf, M, i));
+    }
+    end = steady_clock::now();
+    timespan = duration_cast<microseconds>(end - start).count();
+
+    printf("Read %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
 
     loco.stop();
 

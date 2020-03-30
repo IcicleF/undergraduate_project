@@ -525,24 +525,25 @@ int main(int argc, char **argv)
     printf("LocoFS Client mounted.\n");
     fflush(stdout);
     
-    loco.mkdir("/test", 0644);
-    loco.open("/test/0001", O_RDWR | O_CREAT);
+    string filename = "/test/0001";
+    expectTrue(loco.mkdir("/test", 0644));
+    expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
     char buf[4 << 20];
     for (int i = 0; i < (4 << 20); ++i)
         buf[i] = i % 64 + 32;
-    string filename = "/test/0001";
+    ;
     const int N = 20;
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
-        loco.write(filename, buf, 4 << 20, 0);
+        expectTrue(loco.write(filename, buf, 4 << 20, 0));
     }
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
 
     printf("OK\n");
-    printf("Write 4MB: %.3lf us\n", (double)timespan / N);
+    printf("Write 4MB: %.2lf us\n", (double)timespan / N);
 
     loco.stop();
 

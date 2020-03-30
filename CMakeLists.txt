@@ -22,6 +22,18 @@ add_library(galois_base STATIC
     src/network/rdma.cpp
     src/network/rpc.cpp
 )
+add_library(galois_base_repl STATIC
+    src/test/ecal_repl.cpp
+    src/config.cpp
+    src/network/rdma.cpp
+    src/network/rpc.cpp
+)
+add_library(galois_base_none STATIC
+    src/test/ecal_none.cpp
+    src/config.cpp
+    src/network/rdma.cpp
+    src/network/rpc.cpp
+)
 set(LIBS
     ${CMAKE_THREAD_LIBS_INIT}
     isal

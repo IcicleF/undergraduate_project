@@ -1,6 +1,7 @@
 #include <fs/DMStore.h>
 #include <config.hpp>
 #include <ecal.hpp>
+#include <debug.hpp>
 
 #include <signal.h>
 
@@ -61,13 +62,15 @@ void processDMRPC(const RPCMessage *request, RPCMessage *response)
                 st.st.st_ctime = di.ctime;
                 memcpy(response->raw, &st, sizeof(loco_dir_stat));
             }
+            d_info("stat: %s -> %d", path.c_str(), response->result);
         }
         case RPCMessage::RPC_MKDIR: {
             string path = request->path;        
             di.mode = request->mode;
             di.uid = di.gid = 0777;
             response->result = dms->dm->mkdir(path, di);
-            break;
+            d_info("mkdir: %s -> %d", path.c_str(), response->result);
+	    break;
         }
         case RPCMessage::RPC_RMDIR: {
             string path = request->path;

@@ -171,7 +171,7 @@ bool LocofsClient::mkdir(const std::string &path, int32_t mode)
     std::string p;
     _check_path(path, p);
 
-    d_info("mkdir: <%s>", p.c_str());
+    d_info("mkdir: %s", p.c_str());
 
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
@@ -416,7 +416,7 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
     if (UCache.get(path, uuid))
         return true;
 
-    d_info("_get_uuid: <%s>", path.c_str());
+    d_info("_get_uuid: %s", path.c_str());
     
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
@@ -534,21 +534,22 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
-    char buf[4 << 20];
-    for (int i = 0; i < (4 << 20); ++i)
+    const int M = 16 << 10;
+    char buf[M];
+    for (int i = 0; i < M; ++i)
         buf[i] = i % 64 + 32;
     ;
     const int N = 20;
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
-        expectTrue(loco.write(filename, buf, 4 << 20, 0));
+        expectTrue(loco.write(filename, buf, M, i));
     }
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
 
     printf("OK\n");
-    printf("Write 4MB: %.2lf us\n", (double)timespan / N);
+    printf("Write %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
 
     loco.stop();
 

@@ -63,6 +63,7 @@ void processDMRPC(const RPCMessage *request, RPCMessage *response)
                 memcpy(response->raw, &st, sizeof(loco_dir_stat));
             }
             d_info("stat: %s -> %d", path.c_str(), response->result);
+	    break;
         }
         case RPCMessage::RPC_MKDIR: {
             string path = request->path;        

@@ -73,6 +73,7 @@ void processFMRPC(const RPCMessage *request, RPCMessage *response)
                 st.block_size = fi.fc.block_size;
                 memcpy(response->raw, &st, sizeof(loco_file_stat));
             }
+	    break;
         }
         case RPCMessage::RPC_OPEN: {
             string path = request->path;

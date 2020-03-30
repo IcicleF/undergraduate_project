@@ -177,6 +177,7 @@ void RPCInterface::rpcListen()
  */
 void RPCInterface::rpcCall(int peerId, const Message *request, Message *response)
 {
+    //d_info("RPC call to %d, type %d", peerId, (int)request->data.rpc.type);
     memcpy(socket->getSendRegion(peerId), request, sizeof(Message));
     socket->postSend(peerId, sizeof(Message));
     socket->postReceive(peerId, sizeof(Message), peerId);

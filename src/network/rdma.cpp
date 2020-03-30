@@ -124,10 +124,14 @@ void RDMASocket::stopListenerAndJoin()
         return;
 
     shouldRun = false;
+    /*
     if (ecPoller.joinable())
         ecPoller.join();
-    
-    d_info("all joinable listener threads have joined");
+    */
+    ecPoller.detach();
+
+    //d_info("all joinable listener threads have joined");
+    d_info("EC poller has detached");
 }
 
 /* This function is expected to run as a single thread. */

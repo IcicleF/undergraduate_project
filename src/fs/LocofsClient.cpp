@@ -171,6 +171,8 @@ bool LocofsClient::mkdir(const std::string &path, int32_t mode)
     std::string p;
     _check_path(path, p);
 
+    d_info("mkdir: <%s>", p.c_str());
+
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
     request.data.rpc.type = RPCMessage::RPC_MKDIR;
@@ -413,6 +415,8 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
 {
     if (UCache.get(path, uuid))
         return true;
+
+    d_info("_get_uuid: <%s>", path.c_str());
     
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
@@ -527,6 +531,7 @@ int main(int argc, char **argv)
     
     string filename = "/test/0001";
     expectTrue(loco.mkdir("/test", 0644));
+    expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
     char buf[4 << 20];

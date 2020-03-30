@@ -16,6 +16,12 @@
 
 #define SERVER(A, B) A[location(B) % A.size()]
 
+
+long meta_rpc_time_r = 0, meta_rpc_time_w = 0;
+long data_rdma_time_r = 0, data_rdma_time_w = 0;
+long meta_upd_time_r = 0, meta_upd_time_w = 0;
+
+
 bool LocofsClient::mount(const std::string &conf)
 {
     parseConfig();
@@ -32,10 +38,18 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *          block_size for data write
      *          others for FileContentInode update
      */
+
+    using std::chrono::steady_clock;
+    using std::chrono::duration_cast;
+    using std::chrono::microseconds;
+
+    auto stt = steady_clock::now();
     struct loco_file_stat loco_st;
     if (_get_file_stat(path, loco_st) == false) {
         return false;
     }
+    auto edt = steady_clock::now();
+    meta_rpc_time_w += duration_cast<microseconds>(edt - stt).count();
 
     /**
      *  Write data begin
@@ -46,6 +60,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
 
     ECAL::Page page;
     std::hash<std::string> hash_key;
+    stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
@@ -71,13 +86,18 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         len -= block_len;
         offset += block_len;
     }
+    edt = steady_clock::now();
+    data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
 
     /**
      *  Get Key_FileInode
      */
     std::string Key_File;
+    stt = steady_clock::now();
     if (_get_file_key(path, Key_File) == false)
         return false;
+    edt = steady_clock::now();
+    meta_rpc_time_w += duration_cast<microseconds>(edt - stt).count();
     
     /**
      *  Update FileContentInode
@@ -88,6 +108,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     fci.mtime = time(NULL);
     fci.atime = time(NULL);
     
+    stt = steady_clock::now();
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
     request.data.rpc.type = RPCMessage::RPC_CSIZE;
@@ -95,6 +116,8 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     request.data.rpc.path[MAX_PATH_LEN] = 0;
     memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
     ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+    edt = steady_clock::now();
+    meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
     return (response.data.rpc.result == 0);
 }
@@ -105,9 +128,16 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     /**
      *  Get file stat
      */
+    using std::chrono::steady_clock;
+    using std::chrono::duration_cast;
+    using std::chrono::microseconds;
+
+    auto stt = steady_clock::now();
     struct loco_file_stat loco_st;
     if (_get_file_stat(path, loco_st) == false)
         return false;
+    auto edt = steady_clock::now();
+    meta_rpc_time_r += duration_cast<microseconds>(edt - stt).count();
 
     /**
      *  Read data begin
@@ -124,6 +154,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
 
     ECAL::Page page;
     std::hash<std::string> hash_key;
+    stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
@@ -140,13 +171,18 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
         len -= block_len;
         offset += block_len;
     }
+    edt = steady_clock::now();
+    data_rdma_time_r += duration_cast<microseconds>(edt - stt).count();
 
     /**
      *  Get Key_FileInode
      */
     std::string Key_File;
+    stt = steady_clock::now();
     if (_get_file_key(path, Key_File) == false)
         return false;
+    edt = steady_clock::now();
+    meta_rpc_time_r += duration_cast<microseconds>(edt - stt).count();
     
     /**
      *  Update FileContentInode
@@ -155,6 +191,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     _set_ContentInode(loco_st, fci);
     fci.atime = time(NULL);
 
+    stt = steady_clock::now();
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
     request.data.rpc.type = RPCMessage::RPC_CSIZE;
@@ -162,6 +199,8 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     request.data.rpc.path[MAX_PATH_LEN] = 0;
     memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
     ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+    edt = steady_clock::now();
+    meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
     return start;
 }
@@ -553,6 +592,10 @@ int main(int argc, char **argv)
 
     //printf("OK\n");
     printf("Write %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
+    printf("Breakdown:\n");
+    printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time_w / N);
+    printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
+    printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_w / N);
 
     start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
@@ -562,6 +605,10 @@ int main(int argc, char **argv)
     timespan = duration_cast<microseconds>(end - start).count();
 
     printf("Read %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
+    printf("Breakdown:\n");
+    printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time_r / N);
+    printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
+    printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
     loco.stop();
 

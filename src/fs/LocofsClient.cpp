@@ -22,6 +22,19 @@ long data_rdma_time_r = 0, data_rdma_time_w = 0;
 long meta_upd_time_r = 0, meta_upd_time_w = 0;
 
 
+inline uint64_t hashObj(struct loco_file_stat st, int blkid)
+{
+    uint64_t ret = 0;
+    ret ^= st.sid * 2654435761;
+    ret = (ret << 32) ^ ret;
+    ret ^= st.suuid * 2654435761;
+    ret = (ret << 27) ^ ret;
+    ret ^= blkid * 2654435761;
+    ret = (ret << 37) ^ ret;
+    return ret;
+}
+
+
 bool LocofsClient::mount(const std::string &conf)
 {
     parseConfig();
@@ -59,17 +72,14 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     int64_t start = 0;
 
     ECAL::Page page;
-    std::hash<std::string> hash_key;
     stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
         int64_t block_len = block_size - block_off;         
         block_len = len > block_len ? block_len : len;      // length in the current block
-        std::string Key_Obj;
-        _get_object_key(path, block_num, Key_Obj);
 
-        uint64_t blkno = hash_key(Key_Obj) % ecal.getClusterCapacity();
+        uint64_t blkno = hashObj(loco_st, block_num) % ecal.getClusterCapacity();
         if (block_off || block_off + block_len < Block4K::size) {
             /* Needs a read; TODO: remove read */
             ecal.readBlock(blkno, page);
@@ -153,17 +163,14 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     }
 
     ECAL::Page page;
-    std::hash<std::string> hash_key;
     stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
         int64_t block_len = block_size - block_off;
         block_len = len > block_len ? block_len : len;      // length in the current block
-        std::string Key_Obj;
-        _get_object_key(path, block_num, Key_Obj);
 
-        uint64_t blkno = hash_key(Key_Obj) % ecal.getClusterCapacity();
+        uint64_t blkno = hashObj(loco_st, block_num) % ecal.getClusterCapacity();
         ecal.readBlock(blkno, page);
         memcpy(buf + start, page.page.data + block_off,  block_len);
         

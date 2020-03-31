@@ -46,6 +46,8 @@ CmdLineConfig::CmdLineConfig()
     else
         tcpPort = 33344;
 
+    recover = (env = getenv("RECOVER"));
+
     /* getenv results should NOT be freed, so it is left as is */
     d_info("pmem: %s", pmemDeviceName.c_str());
     d_info("pmem size: %lu", pmemSize);

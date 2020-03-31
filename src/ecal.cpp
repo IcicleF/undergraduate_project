@@ -34,6 +34,15 @@ ECAL::ECAL()
 
     for (int i = 0; i < P; ++i)
         parity[i] = encodeBuffer + i * BlockTy::size;
+
+    /* Start recovery process if this is a recovery */
+    if (cmdConf->recover) {
+        d_warn("start data recovery...");
+
+        /* TODO: do data recovery */
+
+        d_warn("finished data recovery! ECAL start.");
+    }
 }
 
 ECAL::~ECAL()

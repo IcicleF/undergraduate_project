@@ -135,7 +135,7 @@ void RPCInterface::rpcListen()
     if (shouldRun)
         for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
             int peerId = (*clusterConf)[i].id;
-	    if (peerId != myNodeConf->id)
+            if (peerId != myNodeConf->id)
                 socket->postReceive(peerId, RDMA_BUF_SIZE, peerId);
         }
 

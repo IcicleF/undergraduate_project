@@ -95,6 +95,8 @@ private:
     void buildConnParam(rdma_conn_param *param);
     void destroyConnection(rdma_cm_id *cmId);
 
+    void processRecvWriteWithImm(ibv_wc *wc);
+
     ibv_context *ctx = nullptr;
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
@@ -110,10 +112,14 @@ private:
     uint32_t nodeIDBuf;                     /* Send my node ID on connection */
 
     bool shouldRun;                         /* Stop threads if false */
+    bool initialized = false;               /* Indicate whether the ctor has finished */
     int incomingConns = 0;                  /* Incoming successful connections count */
 
     std::mutex stopSpinMutex;               /* To stop ctor from spinning */
     std::condition_variable ssmCondVar;     /* To stop ctor from spinning */
+
+    int degraded = 0;                       /* Indicate whether the EC group is degraded */
+    std::vector<uint64_t> writeLog;         /* In-DRAM write log for degradation write */
 };
 
 #define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))

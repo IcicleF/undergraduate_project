@@ -55,10 +55,10 @@ RDMASocket::RDMASocket()
     char portStr[16];
     snprintf(portStr, 16, "%d", port);
 
-    /* Connect to all peers with id < myId */
+    /* Connect to all peers with id < myId, or all other nodes if recovering */
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
         auto peerNode = (*clusterConf)[i];
-        if (peerNode.id >= myNodeConf->id)
+        if (!cmdConf->recover && peerNode.id >= myNodeConf->id)
             continue;
 
         addrinfo *ai;
@@ -83,6 +83,8 @@ RDMASocket::RDMASocket()
         d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
     }
 
+    initialized = true;
+    writeLog.resize(WRITE_LOG_SIZE);
     d_info("successfully created RDMASocket!");
 }
 
@@ -212,6 +214,16 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
     postSend(peer->peerId, sizeof(Message));
 
     /*
+     * Post another recv to ensure that there is always an outstanding RDMA recv.
+     * Because there is already an RDMA recv, this recv shouldn't receive the remote MR.
+     */
+    postReceive(peer->peerId, sizeof(Message));
+
+    /* If I am already initialized, I won't race for this MR with RPC listener process. */
+    if (initialized)
+        return;
+
+    /*
      * Immediately (and blockingly) poll this RDMA recv.
      * Because the connection is already established, we expect not blocking very long.
      */
@@ -229,6 +241,7 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
             peer->connected = true;
             d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
 
+            /* Safe because here, the RDMASocket is definitely not completely initialized */
             ++incomingConns;
             {
                 std::unique_lock<std::mutex> lock(stopSpinMutex);
@@ -245,7 +258,11 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
 /* As a server or client, handle when a connection is lost */
 void RDMASocket::onDisconnected(rdma_cm_event *event)
 {
+    int peerId = cm2id[(uint64_t)event->id];
+    d_warn("peer %d has disconnected!", peerId);
+
     destroyConnection(event->id);
+    ++degraded;
 }
 
 void RDMASocket::buildResources(ibv_context *ctx)
@@ -501,13 +518,51 @@ int RDMASocket::pollSendCompletion(ibv_wc *wc)
     return 0;
 }
 
-/** Poll for next CQE in recv CQ (RDMA recv). */
+/**
+ * Poll for next CQE in recv CQ (RDMA recv).
+ * This function automatically processes and skips CQEs caused by remote write-with-imm's
+ * or reconnections.
+ */
 int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
     while (shouldRun) {
         int ret = ibv_poll_cq(cq[CQ_RECV], 1, wc);
-        if (ret)
+        if (ret) {
+            if (unlikely(WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV)) {
+                /* Remote MR from a reconnected peer received. No need to repost recv. */
+                auto *peer = peers + WRID_PEER(wc->wr_id);
+                auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
+                if (msg->type == Message::MESG_REMOTE_MR) {
+                    memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
+                    peer->connected = true;
+                    d_info("successfully reconnected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
+                }
+                else
+                    d_err("RDMA recv intended for MR received some other thing");
+                continue;
+            }
+            if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+                /* Transparently processes it, post another recv and retry. */
+                processRecvWriteWithImm(wc);
+                postReceive(WRID_PEER(wc->wr_id), sizeof(Message));
+                continue;
+            }
             return ret;
+        }
     }
     return 0;
+}
+
+/** Process RDMA write-with-imm's to this node */
+void RDMASocket::processRecvWriteWithImm(ibv_wc *wc)
+{
+    if (degraded) {
+        uint64_t blkno = wc->imm_data;
+        d_warn("EC group is degraded, record write to block %lu", blkno);
+        if (writeLog.size() == writeLog.capacity()) {
+            d_err("write log is already full!!  this write will not be logged.");
+            return;
+        }
+        writeLog.push_back(blkno);
+    }
 }

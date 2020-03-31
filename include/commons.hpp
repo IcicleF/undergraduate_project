@@ -42,6 +42,8 @@
 #define CQ_SEND                 0               /* # of CQ for ibv_post_send's */
 #define CQ_RECV                 1               /* # of CQ for ibv_post_recv's */
 
+#define WRITE_LOG_SIZE          50000           /* Max size of write log when degraded */
+
 #define RDMA_BUF_SIZE           4096            /* RDMA send/recv memory buffer size */
 #define ALLOC_TABLE_MAGIC       0xAB71E514      /* Allocation table magic number */
 

@@ -29,6 +29,7 @@ struct CmdLineConfig
     std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
     int tcpPort;                        /* RDMA listen port */
     uint64_t pmemSize;                  /* Data pool size in blocks */
+    bool recover;                       /* Indicate whether this is a recovery */
 };
 
 #define GALOIS_OPTION(t, p) { t, offsetof(CmdLineConfig, p), 1 }

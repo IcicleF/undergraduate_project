@@ -39,12 +39,16 @@ ECAL::ECAL()
     if (cmdConf->recover) {
         d_warn("start data recovery...");
 
-        int peerId;
+        int peerId = -1;
         for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
             peerId = (*clusterConf)[i].id;
             if (rpcInterface->isPeerAlive(peerId))
                 break;
         }
+        if (peerId == -1) {
+            d_err("cannot find a valid peer!");
+            return;
+	}
 
         /* Get remote write buffer MR & size */
         Message request, response;

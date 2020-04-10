@@ -38,6 +38,10 @@ void processFMRPC(const RPCMessage *request, RPCMessage *response)
     response->type = RPCMessage::RPC_UNDEF;
     
     switch (request->type) {
+        case RPCMessage::RPC_TEST: {
+            response->result = 0;
+            break;
+        }
         case RPCMessage::RPC_CREATE: {
             string path = request->path;        
             fai.mode = request->mode;

@@ -39,6 +39,7 @@ struct RPCMessage
         RPC_RMDIR,
         RPC_OPENDIR,
         RPC_READDIR,
+        RPC_TEST
     } type;
 
     int result;

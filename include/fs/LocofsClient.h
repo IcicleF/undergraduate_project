@@ -39,6 +39,8 @@ public:
 
     bool stat(const std::string &path, struct stat &buf);
     bool statdir(const std::string &path, struct stat &buf);
+
+    uint64_t testRoundTrip(int peerId);
     
 private:
     size_t location(std::string path);

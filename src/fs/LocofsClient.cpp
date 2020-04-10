@@ -493,7 +493,7 @@ bool LocofsClient::_get_file_key(const std::string &path, std::string &Key_File)
     boost::filesystem::path parent = tmp.parent_path();
     boost::filesystem::path filename = tmp.filename();
     auto edt = std::chrono::steady_clock::now();
-    boost_cpu_time += (edt - stt).count();
+    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     std::vector<std::string> vkey;
 
@@ -502,14 +502,14 @@ bool LocofsClient::_get_file_key(const std::string &path, std::string &Key_File)
     if (_get_uuid(parent.string(), uuid, true) == false)
         return false;
     edt = std::chrono::steady_clock::now();
-    meta_rpc_time += (edt - stt).count();
+    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     stt = std::chrono::steady_clock::now();
     vkey.push_back(std::to_string(uuid));
     vkey.push_back(filename.string());
     Key_File = boost::join(vkey, ":");
     edt = std::chrono::steady_clock::now();
-    boost_cpu_time += (edt - stt).count();
+    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     return true;
 }
@@ -527,7 +527,7 @@ bool LocofsClient::_get_file_stat(const std::string &path, loco_file_stat &loco_
     request.data.rpc.path[MAX_PATH_LEN] = 0;
     ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
     auto edt = std::chrono::steady_clock::now();
-    meta_rpc_time += (edt - stt).count();
+    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     memcpy(&loco_st, response.data.rpc.raw, sizeof(loco_file_stat));
     return (response.data.rpc.result == 0);
@@ -576,6 +576,22 @@ bool LocofsClient::_check_path(const std::string &path, std::string &p)
 }
 
 
+/** RPC roundtrip time in us */
+uint64_t LocofsClient::testRoundTrip(int peerId)
+{
+    auto stt = std::chrono::steady_clock::now();
+
+    Message request, response;
+    request.type = Message::MESG_RPC_CALL;
+    request.data.rpc.type = RPCMessage::RPC_TEST;
+    ecal.getRPCInterface()->rpcCall(peerId, &request, &response);
+    expectZero(response.data.rpc.result);
+
+    auto edt = std::chrono::steady_clock::now();
+    return std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+}
+
+
 /* Main function part */
 #include <chrono>
 
@@ -601,13 +617,21 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
+    const int N = 100;
+
+    d_info("start roundtrip test...");
+    uint64_t tot = 0;
+    for (int i = 0; i < N; ++i)
+        tot += loco.testRoundTrip(0);
+    
+    printf("Network roundtrip: %.2lf us\n\n", (double)tot / N);
+
     srand(time(0));
     const int M = 16 << 10;
     char buf[M];
     for (int i = 0; i < M; ++i)
         buf[i] = rand() % 64 + 32;
-    ;
-    const int N = 100;
+    
 
     d_info("start r/w...");
 

@@ -43,6 +43,10 @@ void processDMRPC(const RPCMessage *request, RPCMessage *response)
     response->type = RPCMessage::RPC_UNDEF;
     
     switch (request->type) {
+        case RPCMessage::RPC_TEST: {
+            response->result = 0;
+            break;
+        }
         case RPCMessage::RPC_ACCESS: {
             string path = request->path;
             response->result = dms->dm->access(path, di);

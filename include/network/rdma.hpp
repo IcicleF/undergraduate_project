@@ -73,6 +73,9 @@ public:
     void postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1);
     void postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0);
 
+    void postSpecialSend(int peerId, ibv_send_wr *wr);
+    void postSpecialReceive(int peerId, ibv_recv_wr *wr);
+
     __always_inline uint8_t *getSendRegion(int peerId) { return peers[peerId].sendRegion; }
     __always_inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
     __always_inline uint8_t *getWriteRegion(int peerId) { return peers[peerId].writeRegion; }
@@ -80,6 +83,7 @@ public:
 
     int pollSendCompletion(ibv_wc *wc);
     int pollRecvCompletion(ibv_wc *wc);
+    inline ibv_mr *allocMR(void *addr, size_t length, int acc) { return ibv_reg_mr(pd, addr, length, acc); }
 
 private:
     void listenRDMAEvents();
@@ -101,7 +105,7 @@ private:
     ibv_pd *pd = nullptr;                   /* Common protection domain */
     ibv_mr *mr = nullptr;                   /* Common memory region */
     ibv_cq *cq[MAX_CQS];                    /* [0]: send CQ; [1]: recv CQ */
-    ibv_comp_channel *compChannel[MAX_CQS]; /* [0]: send channel; [1]: recv channel */
+    ibv_comp_channel *compChannel[MAX_CQS]; /* [0]: send channel; [1]: recv channel (NOT USED) */
 
     rdma_event_channel *ec = nullptr;       /* Common RDMA event channel */
     rdma_cm_id *listener = nullptr;         /* RDMA listener */
@@ -120,6 +124,7 @@ private:
 
     int degraded = 0;                       /* Indicate whether the EC group is degraded */
     std::vector<uint64_t> writeLog;         /* In-DRAM write log for degradation write */
+    ibv_mr *logMR[MAX_NODES];               /* Write log MR for remote recovery */
 };
 
 #define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))

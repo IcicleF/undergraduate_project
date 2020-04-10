@@ -154,7 +154,7 @@ public:
             else if (rpcInterface->isPeerAlive(peerId)) {
                 uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
                 memcpy(base, parity[i], Block4K::size);
-                rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, Block4K::size);
+                rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, Block4K::size, pos.row);
             }
             else
                 d_err("peer %d is dead, parity write failed.", peerId);

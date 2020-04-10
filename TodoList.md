@@ -8,6 +8,7 @@
 
 * ECAL 部分 block 写入
 * ECAL 无复制写入（指针的 `Page`）
+* 设置多个 send 和 recv region 提高并行度
 
 * 区分 send message 和 response message
 

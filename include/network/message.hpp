@@ -19,6 +19,7 @@
 enum SpecialWRType
 {
     SP_REMOTE_MR_RECV = 1,
+    SP_REMOTE_WRLOG_READ,
     SP_SYNC_RECV,
     SP_TYPES
 };
@@ -63,6 +64,9 @@ struct Message
     enum {
         MESG_UNDEF = 0,
         MESG_REMOTE_MR,
+        MESG_RECOVER_START,
+        MESG_RECOVER_RESPONSE,
+        MESG_RECOVER_END,
         MESG_RPC_CALL,
         MESG_RPC_RESPONSE,
         MESG_SYNC_REQUEST,
@@ -71,7 +75,11 @@ struct Message
     } type;
 
     union {
-        ibv_mr mr;
+        struct 
+        {
+            ibv_mr mr;
+            int size;
+        };
         RPCMessage rpc;
     } data;
 };

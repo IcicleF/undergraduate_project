@@ -28,11 +28,9 @@ RPCInterface::RPCInterface()
     memset(peerAliveStatus, 0, sizeof(peerAliveStatus));
     socket = new RDMASocket();
 
-    shouldRun = (myNodeConf->id != 2);      // TODO: Use clusterConf to decide
-    if (shouldRun)
-        rpcListener = std::thread(&RPCInterface::rpcListen, this);
-    else
-        d_warn("RPC listener is inactivated. No inbound RPC requests will be served.");
+    shouldRun.store(true);
+    rdmaListener = std::thread(&RPCInterface::rdmaListen, this);
+    rpcListener = std::thread(&RPCInterface::rpcListen, this);
 }
 
 /* Destructor deallocates `clusterConf` and `myNodeConf`. */
@@ -125,25 +123,17 @@ void RPCInterface::registerRPCProcessor(void (*rpcProc)(const RPCMessage *, RPCM
     rpcProcessor = rpcProc;
 }
 
-/** 
- * Listen for incoming RPC requests.
- * @note This function should run as a new thread.
+/**
+ * Poll RDMA recv's (already filtered by RDMASocket::pollRecvCompletion), and distribute them
+ * to different SPSC queues.
+ * This mechanism is designed to allow a node to act as both RPC Server and RPC Client.
+ * @note This function should be ran as a new thread.
  */
-void RPCInterface::rpcListen()
+void RPCInterface::rdmaListen()
 {
-    /* Initial RDMA recv */
-    if (shouldRun)
-        for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
-            int peerId = (*clusterConf)[i].id;
-            if (peerId != myNodeConf->id)
-                socket->postReceive(peerId, RDMA_BUF_SIZE, peerId);
-        }
-
     ibv_wc wc[2];
-    RPCMessage request;
-    Message response;
-    response.type = Message::MESG_RPC_RESPONSE;
-    while (shouldRun) {
+
+    while (shouldRun.load()) {
         int ret = socket->pollRecvCompletion(wc);
         if (!ret) {
             d_info("pollRecvCompletion returned 0, indicating RDMASocket has stopped.");
@@ -151,40 +141,58 @@ void RPCInterface::rpcListen()
         }
         int peerId = WRID_PEER(wc->wr_id);
         auto *msg = reinterpret_cast<Message *>(socket->getRecvRegion(peerId));
+
+        /* Here comes extra data copies. TODO: Consider the tradeoffs. */
+        ReqBuf rbuf(wc[0], msg);
+        if (msg->type == Message::MESG_RPC_CALL)
+            while (!rq.push(rbuf));
+        else if (msg->type == Message::MESG_RPC_RESPONSE)
+            while (!sq.push(rbuf));
+        else
+            while (!oq.push(rbuf));
         
-        if (msg->type == Message::MESG_RPC_CALL) {
-            auto const *rpcMsg = &msg->data.rpc;
-            memcpy(&request, rpcMsg, sizeof(RPCMessage));
-            socket->postReceive(peerId, RDMA_BUF_SIZE, peerId);
-
-            if (rpcProcessor)
-                rpcProcessor(&request, &response.data.rpc);
-            memcpy(socket->getSendRegion(peerId), &response, sizeof(Message));
-            socket->postSend(peerId, sizeof(Message));
-        }
-        else 
-            d_warn("unexpected message type %d caught by rpcListen", (int)msg->type);
+        socket->postReceive(peerId, sizeof(Message));
     }
-
-    d_info("RPCInterface has stopped listening inbounds RPCs.");
+    
+    d_info("rdmaListen has safely exited.");
 }
 
-/**
- * Invoke an RPC.
- * @note Currently you can't serve and post RPC requests simutaneously, because
- *       they will race for the completion entry. This is probably a TODO. Maybe
- *       it is possible to use a cond_var and let these functions all wait on it.
+/** 
+ * Listen for incoming RPC requests.
+ * @note This function should be ran as a new thread.
  */
+void RPCInterface::rpcListen()
+{
+    ReqBuf rbuf;
+    Message response;
+    response.type = Message::MESG_RPC_RESPONSE;
+    while (true) {
+        while (shouldRun.load() && !rq.pop(rbuf));
+        if (!shouldRun.load())
+            break;
+
+        int peerId = WRID_PEER(rbuf.wc.wr_id);
+        if (rpcProcessor)
+            rpcProcessor(&rbuf.msg.data.rpc, &response.data.rpc);
+        memcpy(socket->getSendRegion(peerId), &response, sizeof(Message));
+        socket->postSend(peerId, sizeof(Message));
+    }
+
+    d_info("rpcListen has safely exited.");
+}
+
+/** Invoke an RPC. */
 void RPCInterface::rpcCall(int peerId, const Message *request, Message *response)
 {
     //d_info("RPC call to %d, type %d", peerId, (int)request->data.rpc.type);
     memcpy(socket->getSendRegion(peerId), request, sizeof(Message));
     socket->postSend(peerId, sizeof(Message));
-    socket->postReceive(peerId, sizeof(Message), peerId);
-    
-    ibv_wc wc[2];
-    expectPositive(socket->pollRecvCompletion(wc));
-    memcpy(response, socket->getRecvRegion(peerId), sizeof(Message));
-    if (response->type != Message::MESG_RPC_RESPONSE)
-        d_err("unexpected response type: %d", (int)response->type);
+
+    ReqBuf rbuf;
+    if (request->type == Message::MESG_RPC_CALL)
+        while (shouldRun.load() && !sq.pop(rbuf));      /* Normal RPC call, expect RPC response */
+    else
+        while (shouldRun.load() && !oq.pop(rbuf));      /* Special RPC call, expect special response */
+    expectTrue(WRID_PEER(rbuf.wc.wr_id) == peerId);
+    memcpy(response, &rbuf.msg, sizeof(Message));
 }

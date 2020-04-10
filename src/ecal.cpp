@@ -39,7 +39,55 @@ ECAL::ECAL()
     if (cmdConf->recover) {
         d_warn("start data recovery...");
 
-        /* TODO: do data recovery */
+        int peerId;
+        for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+            peerId = (*clusterConf)[i].id;
+            if (rpcInterface->isPeerAlive(peerId))
+                break;
+        }
+
+        /* Get remote write buffer MR & size */
+        Message request, response;
+        request.type = Message::MESG_RECOVER_START;
+        rpcInterface->rpcCall(peerId, &request, &response);
+        int writeLogLen = response.data.size;
+        size_t writeLogSize = writeLogLen * sizeof(uint64_t);
+
+        /* Allocate local write log space */
+        std::vector<uint64_t> blkNos;
+        blkNos.resize(writeLogLen);
+        uint64_t *localDst = blkNos.data();
+        ibv_mr *localLogMR = rpcInterface->getRDMASocket()->allocMR(localDst, writeLogSize, IBV_ACCESS_LOCAL_WRITE);
+
+        /* Perform RDMA read */
+        ibv_send_wr wr;
+        ibv_sge sge;
+        ibv_wc wc[2];
+
+        memset(&sge, 0, sizeof(ibv_sge));
+        sge.addr = (uint64_t)localDst;
+        sge.length = writeLogSize;
+        sge.lkey = localLogMR->lkey;
+
+        memset(&wr, 0, sizeof(ibv_send_wr));
+        wr.wr_id = WRID(peerId, SP_REMOTE_WRLOG_READ);
+        wr.sg_list = &sge;
+        wr.num_sge = 1;
+        wr.opcode = IBV_WR_RDMA_READ;
+        wr.send_flags = IBV_SEND_SIGNALED;
+        wr.wr.rdma.remote_addr = (uint64_t)response.data.mr.addr;
+        wr.wr.rdma.rkey = response.data.mr.rkey;
+
+        rpcInterface->getRDMASocket()->postSpecialSend(peerId, &wr);
+        expectPositive(rpcInterface->getRDMASocket()->pollSendCompletion(wc));
+
+        /* Retrieve & Recover */
+        for (int i = 0; i < writeLogLen; ++i) {
+            //TODO
+        }
+
+        /* Local & remote cleanup */
+        ibv_dereg_mr(localLogMR);
 
         d_warn("finished data recovery! ECAL start.");
     }
@@ -140,7 +188,7 @@ void ECAL::writeBlock(ECAL::Page &page)
         else if (rpcInterface->isPeerAlive(peerId)) {
             uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
-            rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size);
+            rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
         }
     }
 }

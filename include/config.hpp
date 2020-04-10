@@ -38,8 +38,9 @@ struct CmdLineConfig
 enum NodeType
 {
     NODE_UNDEF = 0,
-    NODE_CM = 1,
-    NODE_DS = 2,
+    NODE_DMS,
+    NODE_FMS,
+    NODE_DS,
     NODE_CLI = 9
 };
 

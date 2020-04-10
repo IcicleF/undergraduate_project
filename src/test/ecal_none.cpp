@@ -73,5 +73,5 @@ void ECAL::writeBlock(ECAL::Page &page)
     uint64_t blockShift = getBlockShift(row * K);
     uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
     memcpy(base, page.page.data, Block4K::size);
-    rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size);
+    rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, row);
 }

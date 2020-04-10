@@ -44,9 +44,9 @@ CmdLineConfig::CmdLineConfig()
     if ((env = getenv("PORT")))
         tcpPort = std::stoi(std::string(env));
     else
-        tcpPort = 33344;
+        tcpPort = 40345;
 
-    recover = (env = getenv("RECOVER"));
+    recover = ((env = getenv("RECOVER")) && strcmp(env, "OFF") && strcmp(env, "NO"));
 
     /* getenv results should NOT be freed, so it is left as is */
     d_info("pmem: %s", pmemDeviceName.c_str());
@@ -67,6 +67,7 @@ ClusterConfig::ClusterConfig(string filename)
     string hostname;
     string ipAddrStr;
     string ibDevIPAddrStr;
+    string nodeTypeStr;
 
     ifstream fin(filename);
     if (!fin) {
@@ -75,7 +76,7 @@ ClusterConfig::ClusterConfig(string filename)
     }
     
     int i;
-    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr >> ibDevIPAddrStr; ++i) {
+    for (i = 0; fin >> nodeId >> hostname >> ipAddrStr >> ibDevIPAddrStr >> nodeTypeStr; ++i) {
         if (i >= MAX_NODES) {
             d_err("there must be no more than %d nodes", MAX_NODES);
             exit(-1);
@@ -91,7 +92,16 @@ ClusterConfig::ClusterConfig(string filename)
         nodeConf[nodeId].hostname = hostname;
         nodeConf[nodeId].ipAddrStr = ipAddrStr;
         nodeConf[nodeId].ibDevIPAddrStr = ibDevIPAddrStr;
-        nodeConf[nodeId].type = NODE_DS;
+        if (nodeTypeStr == "DMS")
+            nodeConf[nodeId].type = NODE_DMS;
+        else if (nodeTypeStr == "FMS")
+            nodeConf[nodeId].type = NODE_FMS;
+        else if (nodeTypeStr == "DS")
+            nodeConf[nodeId].type = NODE_DS;
+        else if (nodeTypeStr == "CLI")
+            nodeConf[nodeId].type = NODE_CLI;
+        else
+            d_err("unrecognized node type: %s", nodeTypeStr.c_str());
         ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;
         host2id[hostname] = nodeId;
     }

@@ -560,7 +560,7 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
             int peerId = WRID_PEER(wc->wr_id);
             auto *peer = peers + peerId;
             auto *msg = reinterpret_cast<Message *>(peer->recvRegion);    
-            if (Unlikely(WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV)) {
+            if (Unlikely(initialized && WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV)) {
                 /* Remote MR from a reconnected peer received. No need to repost recv. */
                 if (msg->type == Message::MESG_REMOTE_MR) {
                     memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
@@ -571,7 +571,7 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
                     d_err("RDMA recv intended for MR received some other thing");
                 continue;
             }
-            if (Unlikely(msg->type == Message::MESG_RECOVER_START)) {
+            if (Unlikely(initialized && msg->type == Message::MESG_RECOVER_START)) {
                 /* Remote recover start. Register MR, send back MR and size */
                 uint64_t *wrLog = writeLog.data();
                 size_t wrLogSize = writeLog.size();

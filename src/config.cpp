@@ -166,7 +166,7 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
     }
 
     base = (uint64_t)mmap(NULL, conf.pmemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (unlikely(base == 0)) {
+    if (Unlikely(base == 0)) {
         d_err("cannot perform mmap (size: %lu, err: %s)", conf.pmemSize, strerror(errno));
         close(fd);
         exit(-1);

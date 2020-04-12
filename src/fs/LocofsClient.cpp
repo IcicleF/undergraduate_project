@@ -14,6 +14,8 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
+#include "rpc.h"
+
 #define SERVER(A, B) A[location(B) % A.size()]
 
 

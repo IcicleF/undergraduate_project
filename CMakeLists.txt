@@ -1,18 +1,23 @@
 cmake_minimum_required(VERSION 3.5)
 project(galois LANGUAGES CXX)
+
 set(CMAKE_CXX_STANDARD 14)
 set(COMPILER_FLAGS "-O3 -march=native -mtune=native -Wall -g")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMPILER_FLAGS}")
 
+add_definitions(-Wno-unused-function -Wno-nested-anon-types -Wno-keyword-macro)
+add_definitions(-Wno-unneeded-internal-declaration)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# Find dependencies
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/modules")
-find_package(Threads REQUIRED)
-include_directories(
-    ${CMAKE_SOURCE_DIR}/include
-)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# Deal with eRPC issues
+add_subdirectory(third_party/eRPC)
+add_definitions(-DERPC_INFINIBAND=true)
+include_directories(third_party/eRPC/src)
+link_directories(${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
 
 # Store sources & libraries to variables
 # This might violate modern CMake principles, but it's convenient :)
@@ -22,20 +27,8 @@ add_library(galois_base STATIC
     src/network/rdma.cpp
     src/network/rpc.cpp
 )
-add_library(galois_base_repl STATIC
-    src/test/ecal_repl.cpp
-    src/config.cpp
-    src/network/rdma.cpp
-    src/network/rpc.cpp
-)
-add_library(galois_base_none STATIC
-    src/test/ecal_none.cpp
-    src/config.cpp
-    src/network/rdma.cpp
-    src/network/rpc.cpp
-)
-set(LIBS
-    ${CMAKE_THREAD_LIBS_INIT}
+link_libraries(
+    pthread
     isal
     ibverbs
     rdmacm
@@ -44,10 +37,10 @@ set(LIBS
     boost_filesystem
     boost_serialization
     kyotocabinet
-)
-link_libraries(
-    ${LIBS}
     galois_base
+    erpc
+    numa
+    dl
 )
 
 # Main executables

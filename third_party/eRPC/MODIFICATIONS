@@ -1,0 +1,22 @@
+Copyright (c) 2020, Storage Research Group, Tsinghua University
+
+
+This file is presented here in obeying to the Apache 2.0 License.
+The following lists shows our modifications on the original code:
+
+File(s) added:
+- MODIFICATIONS
+
+File(s) removed:
+- apps/
+- drivers/
+- hello_world/
+- mica/
+- scripts/
+- tests/
+- Doxyfile
+- DoxygenLayout.xml
+- NOTES.md
+
+File(s) modified (you should also see a notice in each):
+- CMakeLists.txt

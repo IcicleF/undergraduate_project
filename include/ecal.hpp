@@ -13,6 +13,7 @@
 #include "config.hpp"
 #include "datablock.hpp"
 #include "network/rpc.hpp"
+#include "network/netif.hpp"
 
 class ECAL
 {

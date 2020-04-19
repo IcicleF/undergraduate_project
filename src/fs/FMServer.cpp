@@ -29,6 +29,8 @@ private:
 
 void processFMRPC(const RPCMessage *request, RPCMessage *response)
 {
+    const int MAX_READDIR_LEN = 511;
+
     using std::string;
 
     auto *fms = FMServer::getInstance();

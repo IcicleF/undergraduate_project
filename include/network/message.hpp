@@ -85,6 +85,4 @@ struct Message
     } data;
 };
 
-static_assert(sizeof(Message) < RDMA_BUF_SIZE, "Message too large");
-
 #endif // MESSAGE_HPP

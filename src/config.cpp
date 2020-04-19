@@ -46,6 +46,8 @@ CmdLineConfig::CmdLineConfig()
     else
         tcpPort = 40345;
 
+    udpPort = 31850;
+
     recover = ((env = getenv("RECOVER")) && strcmp(env, "OFF") && strcmp(env, "NO"));
 
     /* getenv results should NOT be freed, so it is left as is */

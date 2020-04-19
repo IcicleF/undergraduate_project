@@ -47,8 +47,7 @@
 #define RDMA_BUF_SIZE           4096            /* RDMA send/recv memory buffer size */
 #define ALLOC_TABLE_MAGIC       0xAB71E514      /* Allocation table magic number */
 
-#define MAX_PATH_LEN            255             /* Max path length */
-#define MAX_READDIR_LEN         511             /* Max readdir result string length */ 
+#define MAX_PATH_LEN            255             /* Max path length */ 
 
 /* Flush cache line containing `addr`. */
 #define __mem_clflush(addr)                 \
@@ -60,6 +59,10 @@
 
 #define Likely(x)               __builtin_expect(!!(x), 1)
 #define Unlikely(x)             __builtin_expect(!!(x), 0)
+
+#define COMBINE_I32(x, y)       ((((uint64_t)(x)) << 32) | ((uint64_t)(y)))
+#define EXTRACT_X(u)            ((uint32_t)(((u) >> 32) & 0xFFFFFFFF))
+#define EXTRACT_Y(u)            ((uint32_t)((u) & 0xFFFFFFFF))
 
 #ifdef __packed
 #undef __packed

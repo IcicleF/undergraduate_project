@@ -127,8 +127,8 @@ private:
     ibv_mr *logMR[MAX_NODES];               /* Write log MR for remote recovery */
 };
 
-#define WRID(p, t)      ((((uint64_t)(p)) << 32) | ((uint64_t)(t)))
-#define WRID_PEER(id)   ((int)(((id) >> 32) & 0xFFFFFFFF))
-#define WRID_TASK(id)   ((uint32_t)((id) & 0xFFFFFFFF))
+#define WRID(p, t)      COMBINE_I32(p, t)
+#define WRID_PEER(id)   EXTRACT_X(id)
+#define WRID_TASK(id)   EXTRACT_Y(id)
 
 #endif // RDMA_HPP

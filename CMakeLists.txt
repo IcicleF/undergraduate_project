@@ -26,6 +26,7 @@ add_library(galois_base STATIC
     src/config.cpp
     src/network/rdma.cpp
     src/network/rpc.cpp
+    src/network/netif.cpp
 )
 link_libraries(
     pthread

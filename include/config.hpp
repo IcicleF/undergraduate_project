@@ -28,6 +28,7 @@ struct CmdLineConfig
     std::string clusterConfigFile;      /* Cluster configuration file name */
     std::string pmemDeviceName;         /* Persistent memory device (e.g. /dev/dax0.0) */
     int tcpPort;                        /* RDMA listen port */
+    int udpPort;                        /* ERPC management port */
     uint64_t pmemSize;                  /* Data pool size in blocks */
     bool recover;                       /* Indicate whether this is a recovery */
 };

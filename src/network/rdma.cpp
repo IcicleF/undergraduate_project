@@ -6,7 +6,6 @@
 
 #include <config.hpp>
 #include <debug.hpp>
-#include <datablock.hpp>
 #include <network/rdma.hpp>
 
 RDMASocket::RDMASocket()
@@ -324,13 +323,13 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     peer->connected = false;
     peer->sendRegion = new uint8_t[RDMA_BUF_SIZE];
     peer->recvRegion = new uint8_t[RDMA_BUF_SIZE];
-    peer->writeRegion = new uint8_t[Block4K::capacity];
-    peer->readRegion = new uint8_t[Block4K::capacity];
+    peer->writeRegion = new uint8_t[Block4K::capacity * RDMAConnection::NConcurrency];
+    peer->readRegion = new uint8_t[Block4K::capacity * RDMAConnection::NConcurrency];
 
     expectNonZero(peer->sendMR = ibv_reg_mr(pd, peer->sendRegion, RDMA_BUF_SIZE, 0));
     expectNonZero(peer->recvMR = ibv_reg_mr(pd, peer->recvRegion, RDMA_BUF_SIZE, IBV_ACCESS_LOCAL_WRITE));
-    expectNonZero(peer->writeMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity, 0));
-    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->readRegion, Block4K::capacity, IBV_ACCESS_LOCAL_WRITE));
+    expectNonZero(peer->writeMR = ibv_reg_mr(pd, peer->writeRegion, Block4K::capacity * RDMAConnection::NConcurrency, 0));
+    expectNonZero(peer->readMR = ibv_reg_mr(pd, peer->readRegion, Block4K::capacity * RDMAConnection::NConcurrency, IBV_ACCESS_LOCAL_WRITE));
 
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 

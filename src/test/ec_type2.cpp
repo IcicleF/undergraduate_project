@@ -90,6 +90,7 @@ public:
                 exit(-1);
             }
             memcpy(page.page.data, base, Block4K::size);
+            rpcInterface->getRDMASocket()->freeReadRegion(pos.nodeId, base);
             return;
         }
 
@@ -126,6 +127,12 @@ public:
         uint8_t *output[1] = { page.page.data };
         ec_init_tables(K, 1, &invertMatrix[K * offset], gfTbls);
         ec_encode_data(Block4K::size, K, 1, gfTbls, recoverSrc, output);
+
+        for (int i = 0; i < K; ++i) {
+            int peerId = (decodeIndex[i] + shift) % N;
+            if (peerId != myNodeConf->id)
+                rpcInterface->getRDMASocket()->freeReadRegion(peerId, recoverSrc[i]);
+        }
     }
     void writeBlock(Page &page)
     {
@@ -146,6 +153,12 @@ public:
         }
 
         ec_encode_data(Block4K::size, K, P, gfTables, encodeSrc, parity);
+
+        for (int i = 0; i < K; ++i) {
+            int peerId = (shift + i) % N;
+            if (peerId != myNodeConf->id)
+                rpcInterface->getRDMASocket()->freeReadRegion(peerId, encodeSrc[i]);
+        }
         
         for (int i = 0; i < P; ++i) {
             int peerId = (shift + i + K) % N;
@@ -155,6 +168,7 @@ public:
                 uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
                 memcpy(base, parity[i], Block4K::size);
                 rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, Block4K::size, pos.row);
+                rpcInterface->getRDMASocket()->freeWriteRegion(peerId, base);
             }
             else
                 d_err("peer %d is dead, parity write failed.", peerId);

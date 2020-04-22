@@ -48,7 +48,7 @@ ECAL::ECAL()
         if (peerId == -1) {
             d_err("cannot find a valid peer!");
             return;
-	}
+        }
 
         /* Get remote write buffer MR & size */
         Message request, response;
@@ -86,12 +86,69 @@ ECAL::ECAL()
         expectPositive(rpcInterface->getRDMASocket()->pollSendCompletion(wc));
 
         /* Retrieve & Recover */
+        int pagePerRow = clusterConf->getClusterSize() / N;
+        uint8_t *recoverSrc[K];
+        int decodeIndex[K];
         for (int i = 0; i < writeLogLen; ++i) {
-            //TODO
+            uint64_t row = blkNos[i];
+            uint64_t blockShift = getBlockShift(row);
+            int startNodeId = (row % pagePerRow) * N;
+            int selfId = -1;
+            for (int i = 0, j = 0; i < K && j < N; ++j) {
+                int idx = (j + startNodeId) % N;
+                if (idx != myNodeConf->id && rpcInterface->isPeerAlive(peerId))
+                    decodeIndex[i++] = j;
+                else
+                    selfId = j;
+            }
+            int taskCnt = 0;
+            for (int i = 0; i < K; ++i) {
+                int idx = (decodeIndex[i] + startNodeId) % N;
+                uint8_t *base = rpcInterface->getRDMASocket()->getReadRegion(peerId);
+                rpcInterface->remoteReadFrom(idx, blockShift, (uint64_t)base, BlockTy::size, i);
+                recoverSrc[i] = base;
+                ++taskCnt;
+            }
+
+            ibv_wc wc[2];
+            while (taskCnt)
+                taskCnt -= rpcInterface->getRDMASocket()->pollSendCompletion(wc);
+            
+            uint8_t decodeMatrix[1 * K];
+            uint8_t invertMatrix[K * K];
+            uint8_t b[K * K];
+
+            for (int i = 0; i < K; ++i)
+                memcpy(&b[K * i], &encodeMatrix[K * decodeIndex[i]], K);
+            gf_invert_matrix(b, invertMatrix, K);
+            
+            if (selfId < K)
+                memcpy(decodeMatrix, &invertMatrix[K * selfId], K);
+            else
+                for (int i = 0; i < K; ++i) {
+                    int s = 0;
+                    for (int j = 0; j < K; ++j)
+                        s ^= gf_mul(invertMatrix[j * K + i], encodeMatrix[K * selfId + j]);
+                    decodeMatrix[i] = s;
+                }
+            
+            uint8_t gfTbls[K * P * 32];
+            uint8_t *recoverOutput[1] = { reinterpret_cast<uint8_t *>(allocTable->at(row)) };
+            ec_init_tables(K, 1, decodeMatrix, gfTbls);
+            ec_encode_data(BlockTy::size, K, 1, gfTbls, recoverSrc, recoverOutput);
+
+            for (int i = 0; i < K; ++i) {
+                int idx = (decodeIndex[i] + startNodeId) % N;
+                rpcInterface->getRDMASocket()->freeReadRegion(idx, recoverSrc[i]);
+            }
+
         }
 
         /* Local & remote cleanup */
         ibv_dereg_mr(localLogMR);
+
+        request.type = Message::MESG_RECOVER_END;
+        rpcInterface->rpcCall(peerId, &request, &response);
 
         d_warn("finished data recovery! ECAL start.");
     }
@@ -116,7 +173,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     auto pos = getDataPos(index);
     int errs = 0;
     for (int i = 0, j = 0; i < K && j < N; ++j) {
-        int peerId = j + pos.startNodeId;
+        int peerId = (j + pos.startNodeId) % N;
         if (rpcInterface->isPeerAlive(peerId)) 
             decodeIndex[i++] = j;
         else if (j < K) {
@@ -129,7 +186,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     uint64_t blockShift = getBlockShift(pos.row);
     int taskCnt = 0;
     for (int i = 0; i < K; ++i) {
-        int peerId = decodeIndex[i] + pos.startNodeId;
+        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id) {
             uint8_t *base = rpcInterface->getRDMASocket()->getReadRegion(peerId);
             rpcInterface->remoteReadFrom(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
@@ -171,6 +228,12 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     uint8_t gfTbls[K * P * 32];
     ec_init_tables(K, errs, decodeMatrix, gfTbls);
     ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
+
+    for (int i = 0; i < K; ++i) {
+        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
+        if (peerId != myNodeConf->id)
+            rpcInterface->getRDMASocket()->freeReadRegion(peerId, recoverSrc[i]);
+    }
 }
 
 void ECAL::writeBlock(ECAL::Page &page)
@@ -184,7 +247,7 @@ void ECAL::writeBlock(ECAL::Page &page)
     DataPosition pos = getDataPos(page.index);
     uint64_t blockShift = getBlockShift(pos.row);
     for (int i = 0; i < N; ++i) {
-        int peerId = pos.startNodeId + i;
+        int peerId = (pos.startNodeId + i) % N;
         uint8_t *blk = (i < K ? data[i] : parity[i - K]);
         
         if (peerId == myNodeConf->id)
@@ -193,6 +256,7 @@ void ECAL::writeBlock(ECAL::Page &page)
             uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
             rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
+            rpcInterface->getRDMASocket()->freeReadRegion(peerId, base);
         }
     }
 }

@@ -22,11 +22,15 @@
 #include <rdma/rdma_cma.h>
 
 #include "../config.hpp"
+#include "../bitmap.hpp"
+#include "../datablock.hpp"
 #include "message.hpp"
 
 /* Store necessary information for a connection with a peer. */
 struct RDMAConnection
 {
+    static const int NConcurrency = 32;
+
     int peerId;
     bool connected;
 
@@ -43,6 +47,8 @@ struct RDMAConnection
     uint8_t *recvRegion;                /* Recv Region: allocated */
     uint8_t *writeRegion;               /* Write Region: allocated */
     uint8_t *readRegion;                /* Read Region: allocated */
+    Bitmap<NConcurrency> readBitmap;
+    Bitmap<NConcurrency> writeBitmap;
 };
 
 /* Predeclaration for RDMASocket to befriend it */
@@ -76,10 +82,36 @@ public:
     void postSpecialSend(int peerId, ibv_send_wr *wr);
     void postSpecialReceive(int peerId, ibv_recv_wr *wr);
 
-    __always_inline uint8_t *getSendRegion(int peerId) { return peers[peerId].sendRegion; }
-    __always_inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
-    __always_inline uint8_t *getWriteRegion(int peerId) { return peers[peerId].writeRegion; }
-    __always_inline uint8_t *getReadRegion(int peerId) { return peers[peerId].readRegion; }
+    inline uint8_t *getSendRegion(int peerId) { return peers[peerId].sendRegion; }
+    inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
+    inline uint8_t *getWriteRegion(int peerId)
+    {
+        int idx = peers[peerId].writeBitmap.allocBit();
+        while (idx == -1) {
+            std::this_thread::yield();
+            idx = peers[peerId].writeBitmap.allocBit();
+        }
+        return peers[peerId].writeRegion + idx * Block4K::capacity;
+    }
+    inline uint8_t *getReadRegion(int peerId)
+    {
+        int idx = peers[peerId].readBitmap.allocBit();
+        while (idx == -1) {
+            std::this_thread::yield();
+            idx = peers[peerId].readBitmap.allocBit();
+        }
+        return peers[peerId].readRegion + idx * Block4K::capacity;
+    }
+    inline void freeWriteRegion(int peerId, uint8_t *addr)
+    {
+        int idx = (addr - peers[peerId].readRegion) / Block4K::capacity;
+        peers[peerId].writeBitmap.freeBit(idx);
+    }
+    inline void freeReadRegion(int peerId, uint8_t *addr)
+    {
+        int idx = (addr - peers[peerId].writeRegion) / Block4K::capacity;
+        peers[peerId].writeBitmap.freeBit(idx);
+    }
 
     int pollSendCompletion(ibv_wc *wc);
     int pollRecvCompletion(ibv_wc *wc);

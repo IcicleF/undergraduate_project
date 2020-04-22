@@ -4,6 +4,7 @@
 #include "rpc.h"            // eRPC
 #include "rdma.hpp"         // self-written RDMA
 #include "msg.hpp"          // new RPC message buffer definitions
+#include "../bitmap.hpp"
 
 enum class ErpcType
 {
@@ -21,24 +22,6 @@ enum class ErpcType
     ERPC_OPENDIR,
     ERPC_READDIR
 };
-
-template <int NBits> struct Bits2Type     { };
-template <>          struct Bits2Type<8>  { using type = uint8_t;  };
-template <>          struct Bits2Type<16> { using type = uint16_t; };
-template <>          struct Bits2Type<32> { using type = uint32_t; };
-template <>          struct Bits2Type<64> { using type = uint64_t; }; 
-
-template <typename Int>
-inline typename std::enable_if<std::is_integral<Int>::value && (sizeof(Int) <= sizeof(int)), int>::type ffs(Int x)
-{
-    return __builtin_ffs(x) - 1;
-}
-
-template <typename Int>
-inline typename std::enable_if<std::is_integral<Int>::value && (sizeof(Int) > sizeof(int)), int>::type ffs(Int x)
-{
-    return __builtin_ffsl(x) - 1;
-}
 
 void smHandler(int sessionNum, erpc::SmEventType event, erpc::SmErrType err, void *context);
 void contFunc(void *context, void *tag);
@@ -123,14 +106,14 @@ public:
         erpc::MsgBuffer reqBuf = rpc->alloc_msg_buffer_or_die(sizeof(ReqTy));
         memcpy(reqBuf.buf, &req, sizeof(ReqTy));
         
-        int idx = allocBit();
+        int idx = bitmap.allocBit();
         if (idx == -1)
             return false;
         
         rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
         locks[idx].wait();
-        freeBit(idx);
+        bitmap.freeBit(idx);
 
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
         return true;
@@ -166,26 +149,6 @@ private:
         }
     };
 
-    int allocBit()
-    {
-        BitmapTy origin = bitmap.load();
-        while (origin) {
-            BitmapTy lowbit = origin & -origin;
-            if (bitmap.compare_exchange_weak(origin, origin & ~lowbit))
-                return ffs(lowbit);
-        }
-        return -1;
-    }
-    void freeBit(int idx)
-    {
-        BitmapTy bit = static_cast<BitmapTy>(1) << idx;
-        while (true) {
-            BitmapTy origin = bitmap.load();
-            if (bitmap.compare_exchange_weak(origin, origin | bit))
-                return;
-        }
-    }
-
     std::shared_ptr<erpc::Nexus> nexus;
     std::shared_ptr<erpc::Rpc<erpc::CTransport>> rpc;
     std::shared_ptr<RDMASocket> rdma;
@@ -197,7 +160,7 @@ private:
     std::unordered_map<int, int> sess2id;
 
     Locker locks[NLockers];
-    std::atomic<BitmapTy> bitmap;
+    Bitmap<NLockers> bitmap;
 };
 
 #endif // NETIF_HPP

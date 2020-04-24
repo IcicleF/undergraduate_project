@@ -256,7 +256,7 @@ void ECAL::writeBlock(ECAL::Page &page)
             uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
             rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
-            rpcInterface->getRDMASocket()->freeReadRegion(peerId, base);
+            rpcInterface->getRDMASocket()->freeWriteRegion(peerId, base);
         }
     }
 }

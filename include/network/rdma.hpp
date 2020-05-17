@@ -114,6 +114,7 @@ public:
     }
 
     int pollSendCompletion(ibv_wc *wc);
+    int pollSendCompletion(ibv_wc *wc, int numEntries);
     int pollRecvCompletion(ibv_wc *wc);
     inline ibv_mr *allocMR(void *addr, size_t length, int acc) { return ibv_reg_mr(pd, addr, length, acc); }
 
@@ -147,7 +148,7 @@ private:
     std::map<uint64_t, int> cm2id;          /* Map rdma_cm_id pointer to peer */
     uint32_t nodeIDBuf;                     /* Send my node ID on connection */
 
-    bool shouldRun;                         /* Stop threads if false */
+    volatile bool shouldRun;                /* Stop threads if false */
     bool initialized = false;               /* Indicate whether the ctor has finished */
     int incomingConns = 0;                  /* Incoming successful connections count */
 

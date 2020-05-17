@@ -544,6 +544,18 @@ int RDMASocket::pollSendCompletion(ibv_wc *wc)
     return 0;
 }
 
+int RDMASocket::pollSendCompletion(ibv_wc *wc, int numEntries)
+{
+    while (shouldRun && numEntries) {
+        int ret = ibv_poll_cq(cq[CQ_SEND], numEntries, wc);
+        if (ret < 0)
+            return ret;
+        wc += ret;
+        numEntries -= ret;
+    }
+    return 0;
+}
+
 /**
  * Poll for next CQE in recv CQ (RDMA recv).
  * This function automatically processes and skips CQEs caused by:

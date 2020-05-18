@@ -6,6 +6,7 @@ The following lists shows our modifications on the original code:
 
 File(s) added:
 - MODIFICATIONS
+- src/config.h
 
 File(s) removed:
 - apps/
@@ -17,6 +18,7 @@ File(s) removed:
 - Doxyfile
 - DoxygenLayout.xml
 - NOTES.md
+- src/config.h.in
 
 File(s) modified (you should also see a notice in each):
 - CMakeLists.txt

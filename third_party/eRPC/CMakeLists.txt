@@ -164,8 +164,6 @@ else()
   endif()
 endif()
 
-configure_file(src/config.h.in src/config.h)
-
 # Compile the library
 if(COMPILE_ERPC_LIB)
   message(STATUS "Compiling eRPC as a library")

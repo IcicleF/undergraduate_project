@@ -490,28 +490,28 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
 
 bool LocofsClient::_get_file_key(const std::string &path, std::string &Key_File)
 {
-    auto stt = std::chrono::steady_clock::now();
+    //auto stt = std::chrono::steady_clock::now();
     boost::filesystem::path tmp(path);
     boost::filesystem::path parent = tmp.parent_path();
     boost::filesystem::path filename = tmp.filename();
-    auto edt = std::chrono::steady_clock::now();
-    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //auto edt = std::chrono::steady_clock::now();
+    //boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     std::vector<std::string> vkey;
 
-    stt = std::chrono::steady_clock::now();
+    //stt = std::chrono::steady_clock::now();
     uint64_t uuid;
     if (_get_uuid(parent.string(), uuid, true) == false)
         return false;
-    edt = std::chrono::steady_clock::now();
-    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //edt = std::chrono::steady_clock::now();
+    //meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
-    stt = std::chrono::steady_clock::now();
+    //stt = std::chrono::steady_clock::now();
     vkey.push_back(std::to_string(uuid));
     vkey.push_back(filename.string());
     Key_File = boost::join(vkey, ":");
-    edt = std::chrono::steady_clock::now();
-    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //edt = std::chrono::steady_clock::now();
+    //boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     return true;
 }
@@ -521,15 +521,15 @@ bool LocofsClient::_get_file_stat(const std::string &path, loco_file_stat &loco_
     std::string Key_File;
     _get_file_key(path, Key_File);
 
-    auto stt = std::chrono::steady_clock::now();
+    //auto stt = std::chrono::steady_clock::now();
     Message request, response;
     request.type = Message::MESG_RPC_CALL;
     request.data.rpc.type = RPCMessage::RPC_STAT;
     strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
     request.data.rpc.path[MAX_PATH_LEN] = 0;
     ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-    auto edt = std::chrono::steady_clock::now();
-    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //auto edt = std::chrono::steady_clock::now();
+    //meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     memcpy(&loco_st, response.data.rpc.raw, sizeof(loco_file_stat));
     return (response.data.rpc.result == 0);

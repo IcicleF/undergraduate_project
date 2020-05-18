@@ -27,9 +27,9 @@ int main(int argc, char **argv)
     while (!ctrlCPressed)
         ctrlCCond.wait(lock);
 
-    printf("DataServer: Ctrl-C, stopListenerAndJoin");
+    printf("DataServer: Ctrl-C");
 
-    ecal.getRPCInterface()->stopListenerAndJoin();
+    ecal.getRDMASocket()->stopListenerAndJoin();
 
     return 0;
 }

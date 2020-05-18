@@ -99,9 +99,9 @@ ClusterConfig::ClusterConfig(string filename)
         else if (nodeTypeStr == "FMS")
             nodeConf[nodeId].type = NODE_FMS;
         else if (nodeTypeStr == "DS")
-            nodeConf[nodeId].type = NODE_DS;
+            nodeConf[nodeId].type = NODE_CLIENT;        /* DSs are Clients */
         else if (nodeTypeStr == "CLI")
-            nodeConf[nodeId].type = NODE_CLI;
+            nodeConf[nodeId].type = NODE_CLIENT;
         else
             d_err("unrecognized node type: %s", nodeTypeStr.c_str());
         ip2id[nodeConf[nodeId].ipAddrStr] = nodeId;

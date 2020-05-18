@@ -2,6 +2,7 @@
 #include <config.hpp>
 #include <ecal.hpp>
 #include <debug.hpp>
+#include <network/netif.hpp>
 
 #include <signal.h>
 

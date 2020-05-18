@@ -21,3 +21,5 @@ File(s) removed:
 File(s) modified (you should also see a notice in each):
 - CMakeLists.txt
 - README.md
+- src/sslot.h
+- src/session.h

@@ -1,3 +1,12 @@
+/* MODIFICATIONS
+ * 
+ * This file (src/sslot.h) is modified to get adapted in Galois.
+ * This notification is here in obeying to the Apache 2.0 license.
+ * 
+ * Details:
+ * - Add interface to access local session ID
+ */
+
 #pragma once
 
 #include <limits>
@@ -59,6 +68,10 @@ class Session {
 
  public:
   enum class Role : int { kServer, kClient };
+
+  inline uint16_t get_local_session_id() const {
+    return local_session_num;
+  }
 
  private:
   Session(Role role, conn_req_uniq_token_t uniq_token, double freq_ghz,

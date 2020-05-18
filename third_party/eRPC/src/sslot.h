@@ -1,3 +1,12 @@
+/* MODIFICATIONS
+ * 
+ * This file (src/sslot.h) is modified to get adapted in Galois.
+ * This notification is here in obeying to the Apache 2.0 license.
+ * 
+ * Details:
+ * - Add interface to access session ID from ReqHandle instance
+ */
+
 #pragma once
 
 #include "msg_buffer.h"
@@ -126,6 +135,9 @@ class ReqHandle : public SSlot {
  public:
   inline const MsgBuffer *get_req_msgbuf() const {
     return &server_info.req_msgbuf;
+  }
+  inline int get_local_session_id() const {
+    return static_cast<int>(session->get_local_session_id());
   }
 };
 }  // namespace erpc

@@ -19,16 +19,19 @@ add_definitions(-DERPC_INFINIBAND=true)
 include_directories(third_party/eRPC/src)
 link_directories(${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
 
-# Store sources & libraries to variables
-# This might violate modern CMake principles, but it's convenient :)
-add_library(galois_base STATIC
+# Main executables
+add_executable(DMServer
+    src/fs/DMServer.cpp
+    src/fs/DMStore.cpp
+    src/fs/KVStore.cpp
+    src/fs/EntryList.cpp
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
     src/network/rpc.cpp
     src/network/netif.cpp
 )
-link_libraries(
+target_link_libraries(DMServer
     pthread
     isal
     ibverbs
@@ -38,39 +41,58 @@ link_libraries(
     boost_filesystem
     boost_serialization
     kyotocabinet
-    galois_base
     erpc
     numa
     dl
 )
 
-# Main executables
-add_executable(DMServer
-    src/fs/DMServer.cpp
-    src/fs/DMStore.cpp
-    src/fs/KVStore.cpp
-    src/fs/EntryList.cpp
-)
 add_executable(FMServer
     src/fs/FMServer.cpp
     src/fs/FMStore.cpp
     src/fs/KVStore.cpp
     src/fs/EntryList.cpp
+    src/ecal.cpp
+    src/config.cpp
+    src/network/rdma.cpp
+    src/network/rpc.cpp
+    src/network/netif.cpp
 )
-# add_executable(DataServer
-#     src/fs/DataServer.cpp
-# )
-add_executable(LocofsClient
-    src/fs/LocofsClient.cpp
+target_link_libraries(FMServer
+    pthread
+    isal
+    ibverbs
+    rdmacm
+    gflags
+    boost_system
+    boost_filesystem
+    boost_serialization
+    kyotocabinet
+    erpc
+    numa
+    dl
 )
 
-# Test executables
-add_executable(block_rw_test
-    src/test/block_rw.cpp
+add_executable(LocofsClient
+    src/fs/LocofsClient.cpp
     src/ecal.cpp
+    src/config.cpp
+    src/network/rdma.cpp
+    src/network/rpc.cpp
+    src/network/netif.cpp
 )
-add_executable(ec_type2_test
-    src/test/ec_type2.cpp
+target_link_libraries(LocofsClient
+    pthread
+    isal
+    ibverbs
+    rdmacm
+    gflags
+    boost_system
+    boost_filesystem
+    boost_serialization
+    kyotocabinet
+    erpc
+    numa
+    dl
 )
 
 # Copy cluster.conf to binary directory

@@ -51,35 +51,34 @@ public:
 
         /* Servers do not need to connect to other nodes */
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
-            return;
+            ;
+        else /* Clients should connect to servers */
+            for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+                NodeConfig conf = (*clusterConf)[i];
+                if ((static_cast<int>(conf.type) & NODE_SERVER) == 0)
+                    continue;
+                if ((!cmdConf->recover && conf.id < myNodeConf->id) || cmdConf->recover) {
+                    std::string uri = conf.hostname + ":" + std::to_string(cmdConf->udpPort);
+                    int sess = sessions[conf.id] = rpc->create_session(uri, 0);
+                    sess2id[sess] = conf.id;
+                    while (!rpc->is_connected(sessions[conf.id]))
+                        rpc->run_event_loop_once();
 
-        /* Clients should connect to servers */
-        for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
-            NodeConfig conf = (*clusterConf)[i];
-            if ((static_cast<int>(conf.type) & NODE_SERVER) == 0)
-                continue;
-            if ((!cmdConf->recover && conf.id < myNodeConf->id) || cmdConf->recover) {
-                std::string uri = conf.hostname + ":" + std::to_string(cmdConf->udpPort);
-                int sess = sessions[conf.id] = rpc->create_session(uri, 0);
-                sess2id[sess] = conf.id;
-                while (!rpc->is_connected(sessions[conf.id]))
-                    rpc->run_event_loop_once();
+                    /* Send an RPC call to inform server of my identity */
+                    {
+                        /* Wait to avoid remote unordered_map corruption */
+                        std::this_thread::sleep_for(std::chrono::microseconds(10));
 
-                /* Send an RPC call to inform server of my identity */
-                {
-                    /* Wait to avoid remote unordered_map corruption */
-                    std::this_thread::sleep_for(std::chrono::microseconds(10));
-
-                    PureValueRequest notifyReq;
-                    PureValueResponse notifyResp;
-                    notifyReq.value = myNodeConf->id;
-                    notifyResp.value = -1;
-                    rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
-                    if (notifyResp.value < 0)
-                        d_err("failed to notify ID to peer: %d", conf.id);
+                        PureValueRequest notifyReq;
+                        PureValueResponse notifyResp;
+                        notifyReq.value = myNodeConf->id;
+                        notifyResp.value = -1;
+                        rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
+                        if (notifyResp.value < 0)
+                            d_err("failed to notify ID to peer: %d", conf.id);
+                    }
                 }
             }
-        }
 
         for (int i = 0; i < NLockers; ++i)
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));

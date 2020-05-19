@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <atomic>
 #include <type_traits>
+#include <limits>
 
 template <int NBits> struct Bits2Type     { };
 template <>          struct Bits2Type<8>  { using type = std::uint8_t;  };
@@ -27,7 +28,7 @@ template <int NBits>
 class Bitmap
 {
 public:
-    Bitmap() = default;
+    Bitmap() : bitmap(std::numeric_limits<BitmapTy>::max()) { }
     ~Bitmap() = default;
 
     int allocBit()

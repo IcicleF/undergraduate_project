@@ -33,15 +33,15 @@ void contFunc(void *context, void *tag)
 void connectHandler(erpc::ReqHandle *reqHandle, void *context)
 {
     auto *netif = reinterpret_cast<NetworkInterface *>(context);
-    int sessId = reqHandle->session->get_local_session_id();
+    //int sessId = reqHandle->session->get_local_session_id();
     
     auto *msgBuf = reqHandle->get_req_msgbuf()->buf;
     auto *notifyReq = reinterpret_cast<PureValueRequest *>(msgBuf);
     int peerId = notifyReq->value;
-    netif->sessions[peerId] = sessId;
-    netif->sess2id[sessId] = peerId;
+    //netif->sessions[peerId] = sessId;
+    //netif->sess2id[sessId] = peerId;
 
-    d_info("Received connection from: peer %d, session %d", peerId, sessId);
+    d_info("Received connection from: peer %d", peerId);
 
     auto &resp = reqHandle->pre_resp_msgbuf;
     netif->rpc->resize_msg_buffer(&resp, sizeof(PureValueResponse));

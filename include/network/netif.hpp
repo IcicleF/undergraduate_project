@@ -52,7 +52,8 @@ public:
         /* Servers do not need to connect to other nodes */
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
             ;
-        else /* Clients should connect to servers */
+        else { /* Clients should connect to servers */
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
                 NodeConfig conf = (*clusterConf)[i];
                 if ((static_cast<int>(conf.type) & NODE_SERVER) == 0)
@@ -73,12 +74,13 @@ public:
                         PureValueResponse notifyResp;
                         notifyReq.value = myNodeConf->id;
                         notifyResp.value = -1;
-                        rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
+                        if (!rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp)) d_info("shit");
                         if (notifyResp.value < 0)
                             d_err("failed to notify ID to peer: %d", conf.id);
                     }
                 }
             }
+        }
 
         for (int i = 0; i < NLockers; ++i)
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));
@@ -119,6 +121,7 @@ public:
 
     void rpcListen()
     {
+        d_warn("RPC listener started.");
         while (shouldRun.load())
             rpc->run_event_loop(1000);
     }
@@ -143,6 +146,7 @@ private:
         void complete()
         {
             std::unique_lock<std::mutex> lock(mutex);
+	    d_info("locker interfered");
             completed = true;
             cv.notify_one();
         }

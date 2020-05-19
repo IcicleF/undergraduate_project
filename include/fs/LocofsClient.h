@@ -11,17 +11,18 @@
 #include "lru_cache.h"
 #include "inode.hpp"
 #include "../ecal.hpp"
+#include "../network/netif.hpp"
 
 class LocofsClient
 {
 public:
-    LocofsClient() = default;
+    LocofsClient() : netif(std::unordered_map<int, erpc::erpc_req_func_t>()) { }
     ~LocofsClient() = default;
 
     bool mount(const std::string &conf);
     void stop()
     {
-        ecal.getRPCInterface()->stopListenerAndJoin();
+        ecal.getRDMASocket()->stopListenerAndJoin();
     }
 
     bool write(const std::string &path, const char *buf, int64_t len, int64_t off);
@@ -61,5 +62,6 @@ private:
     lru_cache<std::string, uint64_t> UCache;
 
     ECAL ecal;
+    NetworkInterface netif;
 };
 #endif  // LocoFS_LocofsClient_H

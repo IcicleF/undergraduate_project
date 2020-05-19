@@ -64,14 +64,5 @@ add_executable(LocofsClient
     src/fs/LocofsClient.cpp
 )
 
-# Test executables
-add_executable(block_rw_test
-    src/test/block_rw.cpp
-    src/ecal.cpp
-)
-add_executable(ec_type2_test
-    src/test/ec_type2.cpp
-)
-
 # Copy cluster.conf to binary directory
 configure_file(cluster.conf ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/cluster.conf COPYONLY)

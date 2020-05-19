@@ -15,6 +15,7 @@ enum class ErpcType
     ERPC_OPEN,
     ERPC_ACCESS,
     ERPC_CREATE,
+    ERPC_CSIZE,
     ERPC_READ,
     ERPC_WRITE,
     ERPC_REMOVE,
@@ -22,7 +23,6 @@ enum class ErpcType
     ERPC_DIRSTAT,
     ERPC_MKDIR,
     ERPC_RMDIR,
-    ERPC_OPENDIR,
     ERPC_READDIR
 };
 
@@ -97,6 +97,8 @@ public:
             rpc->free_msg_buffer(locks[i].respBuf);
     }
 
+    inline erpc::Rpc<erpc::CTransport> *getRPC() { return rpc.get(); }
+
     template <typename ReqTy, typename RespTy>
     bool rpcCall(int peerId, ErpcType type, const ReqTy &req, RespTy &resp)
     {
@@ -159,5 +161,22 @@ private:
     Locker locks[NLockers];
     Bitmap<NLockers> bitmap;
 };
+
+template <typename Ty>
+inline Ty *interpretRequest(erpc::ReqHandle *reqHandle)
+{
+    return reinterpret_cast<Ty *>(reqHandle->get_req_msgbuf()->buf);
+}
+
+template <typename Ty>
+inline Ty *allocateResponse(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *netif = reinterpret_cast<NetworkInterface *>(context);
+    auto &resp = reqHandle->pre_resp_msgbuf;
+    netif->getRPC()->resize_msg_buffer(&resp, sizeof(Ty));
+    return reinterpret_cast<Ty *>(resp.buf);
+}
+
+void sendResponse(erpc::ReqHandle *reqHandle, void *context);
 
 #endif // NETIF_HPP

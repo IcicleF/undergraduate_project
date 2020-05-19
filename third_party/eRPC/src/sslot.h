@@ -4,7 +4,7 @@
  * This notification is here in obeying to the Apache 2.0 license.
  * 
  * Details:
- * - Add interface to access session ID from ReqHandle instance
+ * - Make `session` public
  */
 
 #pragma once
@@ -41,9 +41,10 @@ class SSlot {
   /// A non-preallocated msgbuf for possibly multi-packet responses
   MsgBuffer dyn_resp_msgbuf;
 
+  Session *session;  ///< Pointer to this sslot's session
+
  private:
   // Members that are valid for both server and client
-  Session *session;  ///< Pointer to this sslot's session
 
   /// True iff this sslot is a client sslot. sslot class does not have complete
   /// access to \p session, so we need this info separately.
@@ -135,9 +136,6 @@ class ReqHandle : public SSlot {
  public:
   inline const MsgBuffer *get_req_msgbuf() const {
     return &server_info.req_msgbuf;
-  }
-  inline int get_local_session_id() const {
-    return static_cast<int>(session->get_local_session_id());
   }
 };
 }  // namespace erpc

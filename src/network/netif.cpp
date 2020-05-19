@@ -33,7 +33,7 @@ void contFunc(void *context, void *tag)
 void connectHandler(erpc::ReqHandle *reqHandle, void *context)
 {
     auto *netif = reinterpret_cast<NetworkInterface *>(context);
-    int sessId = reqHandle->get_local_session_id();
+    int sessId = reqHandle->session->get_local_session_id();
     
     auto *msgBuf = reqHandle->get_req_msgbuf()->buf;
     auto *notifyReq = reinterpret_cast<PureValueRequest *>(msgBuf);
@@ -49,4 +49,10 @@ void connectHandler(erpc::ReqHandle *reqHandle, void *context)
     notifyResp->value = myNodeConf->id;
 
     netif->rpc->enqueue_response(reqHandle, &resp);
+}
+
+void sendResponse(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *netif = reinterpret_cast<NetworkInterface *>(context);
+    netif->getRPC()->enqueue_response(reqHandle, &reqHandle->pre_resp_msgbuf);
 }

@@ -34,7 +34,7 @@ CmdLineConfig::CmdLineConfig()
     if ((env = getenv("PMEMDEV")))
         pmemDeviceName = env;
     else
-        pmemDeviceName = "/mnt/gjfs/sim0";
+        pmemDeviceName = "/dev/pmem1";
     
     if ((env = getenv("PMEMSZ")))
         pmemSize = std::stoi(std::string(env));
@@ -44,7 +44,7 @@ CmdLineConfig::CmdLineConfig()
     if ((env = getenv("PORT")))
         tcpPort = std::stoi(std::string(env));
     else
-        tcpPort = 40345;
+        tcpPort = 40346;
 
     udpPort = 31850;
 

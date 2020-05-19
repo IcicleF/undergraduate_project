@@ -1,3 +1,12 @@
+/* MODIFICATIONS
+ * 
+ * This file (src/sslot.h) is modified to get adapted in Galois.
+ * This notification is here in obeying to the Apache 2.0 license.
+ * 
+ * Details:
+ * - Make `session` public
+ */
+
 #pragma once
 
 #include "msg_buffer.h"
@@ -32,9 +41,10 @@ class SSlot {
   /// A non-preallocated msgbuf for possibly multi-packet responses
   MsgBuffer dyn_resp_msgbuf;
 
+  Session *session;  ///< Pointer to this sslot's session
+
  private:
   // Members that are valid for both server and client
-  Session *session;  ///< Pointer to this sslot's session
 
   /// True iff this sslot is a client sslot. sslot class does not have complete
   /// access to \p session, so we need this info separately.

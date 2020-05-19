@@ -1,6 +1,6 @@
 #include <fs/LocofsClient.h>
 #include <config.hpp>
-#include <network/message.hpp>
+#include <network/msg.hpp>
 
 #include <fcntl.h>
 #include <pthread.h>
@@ -14,9 +14,8 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 
-#include "rpc.h"
 
-#define SERVER(A, B) A[location(B) % A.size()]
+#define SERVER(A, B) A[0]
 
 
 long boost_cpu_time = 0;
@@ -121,21 +120,20 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     FileContentInode fci;
     _set_ContentInode(loco_st, fci);
     fci.size = fci.size > (off + len) ? fci.size : (off + len);
-    fci.mtime = time(NULL);
-    fci.atime = time(NULL);
     
     stt = steady_clock::now();
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_CSIZE;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+    ValueWithPathRequest request;
+    {
+        request.value = fci.size;
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CSIZE, request, response);
     edt = steady_clock::now();
     meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
-    return (response.data.rpc.result == 0);
+    return (response.value == 0);
 }
 
 int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int64_t off)
@@ -200,24 +198,6 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     edt = steady_clock::now();
     meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
     
-    /**
-     *  Update FileContentInode
-     */
-    FileContentInode fci;
-    _set_ContentInode(loco_st, fci);
-    fci.atime = time(NULL);
-
-    stt = steady_clock::now();
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_CSIZE;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    memcpy(request.data.rpc.raw2, &fci, sizeof(FileContentInode));
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-    edt = steady_clock::now();
-    meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
-
     return start;
 }
 
@@ -228,28 +208,19 @@ bool LocofsClient::mkdir(const std::string &path, int32_t mode)
 
     //d_info("mkdir: %s", p.c_str());
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_MKDIR;
-    strncpy(request.data.rpc.path, p.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
-    return (response.data.rpc.result == 0);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, p.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(directory_trans, ErpcType::ERPC_MKDIR, request, response);
+    return (response.value == 0);
 }
 
 bool LocofsClient::opendir(const std::string &path, int32_t mode)
 {
-    std::string p;
-    _check_path(path, p);
-    
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_OPENDIR;
-    strncpy(request.data.rpc.path, p.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    request.data.rpc.mode = mode;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
-    return (response.data.rpc.result == 0);
+    return false;
 }
 
 /**
@@ -268,21 +239,20 @@ bool LocofsClient::open(const std::string &path, int32_t flags)
         return false;
     }
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_ACCESS;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_ACCESS, request, response);
     
-    if (response.data.rpc.result == 0)
+    if (response.value == 0)
         return true;
     
-    request.data.rpc.type = RPCMessage::RPC_CREATE;
-    request.data.rpc.mode = 0777;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-
-    return response.data.rpc.result == 0;
+    request.value = 0777;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CREATE, request, response);
+    return response.value == 0;
 }
 
 /**
@@ -293,14 +263,15 @@ bool LocofsClient::rmdir(const std::string &path)
     std::string p;
     _check_path(path, p);
     
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_RMDIR;
-    strncpy(request.data.rpc.path, p.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, p.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(directory_trans, ErpcType::ERPC_RMDIR, request, response);
 
-    if (response.data.rpc.result == 0) {
+    if (response.value == 0) {
         UCache.remove(p);
         return true;
     }
@@ -313,14 +284,14 @@ bool LocofsClient::unlink(const std::string &path)
     if (_get_file_key(path, Key_File) == false)
         return false;
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_REMOVE;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-
-    return response.data.rpc.result == 0;
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_REMOVE, request, response);
+    return (response.value == 0);
 }
 
 /**
@@ -332,19 +303,18 @@ bool LocofsClient::stat(const std::string &path, struct stat &buf)
     if (_get_file_key(path, Key_File) == false)
         return false;
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_STAT;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    StatResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_FILESTAT, request, response);
 
-    if (response.data.rpc.result < 0)
+    if (response.result < 0)
         return false;
     
-    memcpy(&buf, &reinterpret_cast<loco_file_stat *>(response.data.rpc.raw)->st, sizeof(struct stat));
-    buf.st_dev = location(Key_File) % file_trans.size();
-    buf.st_ino = location(Key_File);
+    memcpy(&buf, &response.fileStat.st, sizeof(struct stat));
     return true;
 }
 
@@ -356,20 +326,21 @@ bool LocofsClient::statdir(const std::string &path, struct stat &buf)
     std::string p;
     _check_path(path, p);
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_STAT;
-    strncpy(request.data.rpc.path, p.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, p.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    StatResponse response;
+    netif.rpcCall(directory_trans, ErpcType::ERPC_DIRSTAT, request, response);
 
-    if (response.data.rpc.result < 0)
+    if (response.result < 0)
         return false;
     
-    memcpy(&buf, &reinterpret_cast<loco_dir_stat *>(response.data.rpc.raw)->st, sizeof(struct stat));
+    memcpy(&buf, &response.dirStat.st, sizeof(struct stat));
     buf.st_dev = 0;
     buf.st_mode = S_IFDIR | buf.st_mode;
-    buf.st_ino = location(p);
+    buf.st_ino = 0;
     return true;
 }
 
@@ -380,14 +351,15 @@ bool LocofsClient::readdir(const std::string &path, std::vector<std::string> &bu
     buf.clear();
 
     /* Read subdir entries */
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_READDIR;
-    strncpy(request.data.rpc.path, p.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, p.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    RawResponse response;
+    netif.rpcCall(directory_trans, ErpcType::ERPC_READDIR, request, response);
 
-    std::string vbuf(reinterpret_cast<char *>(response.data.rpc.raw), response.data.rpc.result);
+    std::string vbuf(response.raw, response.len);
     boost::split(buf, vbuf, boost::is_any_of("\t"), boost::token_compress_on);
 
     /**
@@ -401,12 +373,13 @@ bool LocofsClient::readdir(const std::string &path, std::vector<std::string> &bu
      *  iterate all FMServers
      *      to get sub_file entries
      */
-    request.data.rpc.raw64[0] = uuid;
+    PureValueRequest req2;
+    req2.value = uuid;
     for (int i = 0; i < file_trans.size(); i++) {
         std::vector<std::string> temp;
 
-        ecal.getRPCInterface()->rpcCall(file_trans[i], &request, &response);
-        vbuf = std::string(reinterpret_cast<char *>(response.data.rpc.raw), response.data.rpc.result);
+        netif.rpcCall(file_trans[i], ErpcType::ERPC_READDIR, req2, response);
+        vbuf = std::string(response.raw, response.len);
         boost::split(temp, vbuf, boost::is_any_of("\t"), boost::token_compress_on);
 
         if (!temp.empty())
@@ -424,21 +397,20 @@ bool LocofsClient::create(const std::string &path, int32_t mode)
     if (_get_file_key(p, Key_File) == false)
         return false;
     
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_CREATE;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    request.data.rpc.mode = mode;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-    return (response.data.rpc.result == 0);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    PureValueResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CREATE, request, response);
+    return (response.value == 0);
 }
 
 
 size_t LocofsClient::location(std::string path)
 {
-    std::hash<std::string> hash_str;
-    return hash_str(path);
+    return 0;
 }
 
 bool LocofsClient::parseConfig()
@@ -473,17 +445,18 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
 
     //d_info("_get_uuid: %s", path.c_str());
     
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_STAT;
-    strncpy(request.data.rpc.path, path.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(directory_trans, &request, &response);
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, path.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    StatResponse response;
+    netif.rpcCall(directory_trans, ErpcType::ERPC_DIRSTAT, request, response);
 
-    if (response.data.rpc.result < 0)
+    if (response.result < 0)
         return false;
     
-    uuid = reinterpret_cast<loco_dir_stat *>(response.data.rpc.raw)->uuid;
+    uuid = response.dirStat.uuid;
     UCache.set(path, uuid);
     return true;
 }
@@ -521,18 +494,19 @@ bool LocofsClient::_get_file_stat(const std::string &path, loco_file_stat &loco_
     std::string Key_File;
     _get_file_key(path, Key_File);
 
-    //auto stt = std::chrono::steady_clock::now();
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_STAT;
-    strncpy(request.data.rpc.path, Key_File.c_str(), MAX_PATH_LEN);
-    request.data.rpc.path[MAX_PATH_LEN] = 0;
-    ecal.getRPCInterface()->rpcCall(SERVER(file_trans, Key_File), &request, &response);
-    //auto edt = std::chrono::steady_clock::now();
-    //meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    auto stt = std::chrono::steady_clock::now();
+    ValueWithPathRequest request;
+    {
+        strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
+        request.path[MAX_PATH_LEN] = 0;
+    }
+    StatResponse response;
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_FILESTAT, request, response);
+    auto edt = std::chrono::steady_clock::now();
+    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
-    memcpy(&loco_st, response.data.rpc.raw, sizeof(loco_file_stat));
-    return (response.data.rpc.result == 0);
+    memcpy(&loco_st, &response.fileStat, sizeof(loco_file_stat));
+    return (response.result == 0);
 }
 
 /**
@@ -583,11 +557,9 @@ uint64_t LocofsClient::testRoundTrip(int peerId)
 {
     auto stt = std::chrono::steady_clock::now();
 
-    Message request, response;
-    request.type = Message::MESG_RPC_CALL;
-    request.data.rpc.type = RPCMessage::RPC_TEST;
-    ecal.getRPCInterface()->rpcCall(peerId, &request, &response);
-    expectZero(response.data.rpc.result);
+    PureValueRequest request;
+    PureValueResponse response;
+    netif.rpcCall(peerId, ErpcType::ERPC_TEST, request, response);
 
     auto edt = std::chrono::steady_clock::now();
     return std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();

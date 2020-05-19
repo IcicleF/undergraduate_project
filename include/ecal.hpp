@@ -12,8 +12,7 @@
 
 #include "config.hpp"
 #include "datablock.hpp"
-#include "network/rpc.hpp"
-#include "network/netif.hpp"
+#include "network/rdma.hpp"
 
 class ECAL
 {
@@ -39,10 +38,10 @@ public:
     void readBlock(uint64_t index, Page &page);
     void writeBlock(Page &page);
 
-    __always_inline RPCInterface *getRPCInterface() const { return rpcInterface; }
+    inline RDMASocket *getRDMASocket() const { return rdma; }
 
     /* Returns the cluster's capacity in 4kB blocks */
-    __always_inline uint64_t getClusterCapacity() const { return capacity; }
+    inline uint64_t getClusterCapacity() const { return capacity; }
 
 private:
     struct DataPosition
@@ -55,7 +54,7 @@ private:
     };
 
     BlockPool<BlockTy> *allocTable = nullptr;
-    RPCInterface *rpcInterface = nullptr;
+    RDMASocket *rdma = nullptr;
     uint64_t capacity = 0;
 
     uint8_t encodeMatrix[N * K];
@@ -63,12 +62,12 @@ private:
     uint8_t encodeBuffer[P * BlockTy::capacity];
     uint8_t *parity[P];                             /* Points to encodeBuffer */
 
-    __always_inline DataPosition getDataPos(uint64_t index)
+    inline DataPosition getDataPos(uint64_t index)
     {
         int pagePerRow = clusterConf->getClusterSize() / N;
         return DataPosition(index / pagePerRow, (index % pagePerRow) * N);
     }
-    __always_inline uint64_t getBlockShift(uint64_t index)
+    inline uint64_t getBlockShift(uint64_t index)
     {
         return allocTable->getShift(index);
     }

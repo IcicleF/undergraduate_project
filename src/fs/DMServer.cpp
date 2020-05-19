@@ -2,25 +2,22 @@
 #include <config.hpp>
 #include <ecal.hpp>
 #include <debug.hpp>
+#include <network/netif.hpp>
 
 #include <signal.h>
 
 class DMServer
 {
-    friend void processDMRPC(const RPCMessage *, RPCMessage *);
-
 public:
-    static DMServer *getInstance()
+    static DMStore *getInstance()
     {
         static DMServer *inst = nullptr;
         if (!inst)
             inst = new DMServer();
-        return inst;
+        return inst->dm;
     }
 
 private:
-    DMStore *dm;
-
     DMServer() : dm(new DMStore())
     {
         DirectoryInode dii;
@@ -32,74 +29,69 @@ private:
 
         dm->mkdir("/", dii);
     }
+    
+    DMStore *dm = nullptr;
 };
 
-void processDMRPC(const RPCMessage *request, RPCMessage *response)
+void dmHandleTest(erpc::ReqHandle *reqHandle, void *context)
 {
-    const int MAX_READDIR_LEN = 511;
-
-    using std::string;
-
-    auto *dms = DMServer::getInstance();
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    resp->value = 0;
+    sendResponse(reqHandle, context);
+}
+void dmHandleAccess(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    DirectoryInode di;
+    resp->value = DMServer::getInstance()->access(req->path, di);
+    sendResponse(reqHandle, context);
+}
+void dmHandleStat(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<StatResponse>(reqHandle, context);
     DirectoryInode di, di2;
-    response->type = RPCMessage::RPC_UNDEF;
-    
-    switch (request->type) {
-        case RPCMessage::RPC_TEST: {
-            response->result = 0;
-            break;
-        }
-        case RPCMessage::RPC_ACCESS: {
-            string path = request->path;
-            response->result = dms->dm->access(path, di);
-            break;
-        }
-        case RPCMessage::RPC_STAT: {
-            string path = request->path;
-            loco_dir_stat st;
-            dms->dm->getAttr(di, path, di2);
-            if ((response->result = di.error) == 0) {
-                st.uuid = di.uuid;
-                st.st.st_mtime = time(NULL);
-                st.st.st_atime = time(NULL);
-                st.st.st_uid = di.uid;
-                st.st.st_gid = di.gid;
-                st.st.st_mode = di.mode;
-                st.st.st_ctime = di.ctime;
-                memcpy(response->raw, &st, sizeof(loco_dir_stat));
-            }
-            break;
-        }
-        case RPCMessage::RPC_MKDIR: {
-            string path = request->path;        
-            di.mode = request->mode;
-            di.uid = di.gid = 0777;
-            response->result = dms->dm->mkdir(path, di);
-            break;
-        }
-        case RPCMessage::RPC_RMDIR: {
-            string path = request->path;
-            response->result = dms->dm->rmdir(path, di);
-            break;
-        }
-        case RPCMessage::RPC_OPENDIR: {
-            string path = request->path;
-            response->result = dms->dm->opendir(path, di);
-            break;
-        }
-        case RPCMessage::RPC_READDIR: {
-            string res, path = request->path;
-            dms->dm->readdir(res, path);
-            response->result = res.length();
-            strncpy(reinterpret_cast<char *>(response->raw), res.c_str(), MAX_READDIR_LEN);
-            response->raw[MAX_READDIR_LEN] = 0;
-            break;
-        }
-        default: {
-            d_err("unexpected RPC type: %d", (int)request->type);
-            return;
-        }
+    DMServer::getInstance()->getAttr(di, req->path, di2);
+    if ((resp->result = di.error) == 0) {
+        resp->dirStat.uuid = di.uuid;
+        resp->dirStat.st.st_mtime = 0;
+        resp->dirStat.st.st_atime = 0;
+        resp->dirStat.st.st_uid = di.uid;
+        resp->dirStat.st.st_gid = di.gid;
+        resp->dirStat.st.st_mode = di.mode;
+        resp->dirStat.st.st_ctime = di.ctime;
     }
+    sendResponse(reqHandle, context);
+}
+void dmHandleMkdir(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    DirectoryInode di;
+    di.mode = req->value;
+    di.uid = di.gid = 0777;
+    resp->value = DMServer::getInstance()->mkdir(req->path, di);
+    sendResponse(reqHandle, context);
+}
+void dmHandleRmdir(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    DirectoryInode di;
+    resp->value = DMServer::getInstance()->rmdir(req->path, di);
+    sendResponse(reqHandle, context);
+}
+void dmHandleReaddir(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<RawResponse>(reqHandle, context);
+    DirectoryInode di;
+    std::string result;
+    DMServer::getInstance()->readdir(result, req->path);
+    strncpy(reinterpret_cast<char *>(resp->raw), result.c_str(), RawResponse::RAW_SIZE);
+    resp->raw[RawResponse::RAW_SIZE] = 0;
+    sendResponse(reqHandle, context);
 }
 
 std::mutex mut;
@@ -122,23 +114,35 @@ int main(int argc, char **argv)
 
     DMServer::getInstance();
     cmdConf = new CmdLineConfig();
+
     ECAL ecal;
 
-    printf("DMServer: ECAL constructed & exited ctor.\n");
-    fflush(stdout);
+    /* Initialize RPC engine */
+    {
+        std::unordered_map<int, erpc::erpc_req_func_t> reqFuncs;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_TEST)] = dmHandleTest;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_ACCESS)] = dmHandleAccess;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_DIRSTAT)] = dmHandleStat;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_MKDIR)] = dmHandleMkdir;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_RMDIR)] = dmHandleRmdir;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = dmHandleReaddir;
+        
+        NetworkInterface netif(reqFuncs);
 
-    ecal.getRPCInterface()->registerRPCProcessor(processDMRPC);
-    
-    printf("DMServer: main thread sleep.\n");
-    fflush(stdout);
+        printf("DMServer: ECAL constructed & exited ctor.\n");
+        fflush(stdout);
+        
+        printf("DMServer: main thread sleep.\n");
+        fflush(stdout);
 
-    while (!ctrlCPressed)
-        ctrlCCond.wait(lock);
+        while (!ctrlCPressed)
+            ctrlCCond.wait(lock);
 
-    printf("DMServer: Ctrl-C, stopListenerAndJoin\n");
-    fflush(stdout);
+        printf("DMServer: Ctrl-C, stopListenerAndJoin\n");
+        fflush(stdout);
+    }
 
-    ecal.getRPCInterface()->stopListenerAndJoin();
+    ecal.getRDMASocket()->stopListenerAndJoin();
 
     return 0;
 }

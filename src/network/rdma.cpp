@@ -570,7 +570,8 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
         if (ret) {
             int peerId = WRID_PEER(wc->wr_id);
             auto *peer = peers + peerId;
-            auto *msg = reinterpret_cast<Message *>(peer->recvRegion);    
+            auto *msg = reinterpret_cast<Message *>(peer->recvRegion); 
+#if 0   
             if (Unlikely(initialized && WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV)) {
                 /* Remote MR from a reconnected peer received. No need to repost recv. */
                 if (msg->type == Message::MESG_REMOTE_MR) {
@@ -598,6 +599,7 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
                 postReceive(peerId, sizeof(Message));
                 continue;
             }
+#endif
             if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
                 /* Transparently processes it, post another recv and retry. */
                 processRecvWriteWithImm(wc);

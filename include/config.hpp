@@ -39,10 +39,10 @@ struct CmdLineConfig
 enum NodeType
 {
     NODE_UNDEF = 0,
+    NODE_SERVER = 0x10,
     NODE_DMS,
     NODE_FMS,
-    NODE_DS,
-    NODE_CLI = 9
+    NODE_CLIENT = 0x20
 };
 
 /* Node configuration */

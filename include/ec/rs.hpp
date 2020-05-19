@@ -30,14 +30,14 @@ public:
      */
     static void decode(int *srcId, uint8_t **data)
     {
-        uint8_t decodeMatrix[N * K];
-        uint8_t invertMatrix[N * K];
-        uint8_t b[K * K];
-        uint8_t *recoverSrc[K];
-        uint8_t *recoverOutput[P];
-        int errs = 0;
-        int errIndex[P];
-        bool live[N];
+        uint8_t decodeMatrix[N * K];            /* Decode matrix */
+        uint8_t invertMatrix[K * K];            /* Inversion of `b` */
+        uint8_t b[K * K];                       /* Extracted lines from encode matrix */
+        uint8_t *recoverSrc[K];                 /* Points to source data */
+        uint8_t *recoverOutput[P];              /* Points to recovered data */
+        int errs = 0;                           /* Number of corrupted sources */
+        int errIndex[P];                        /* Indexes of corrupted sources */
+        bool live[N];                           /* Liveness bitmap */
 
         auto *inst = instance();
 

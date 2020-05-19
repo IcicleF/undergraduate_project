@@ -1,111 +1,109 @@
 #include <fs/FMStore.h>
 #include <config.hpp>
 #include <ecal.hpp>
+#include <network/netif.hpp>
 
 #include <signal.h>
 
 class FMServer
 {
-    friend void processFMRPC(const RPCMessage *, RPCMessage *);
-
 public:
-    static FMServer *getInstance()
+    static FMStore *getInstance()
     {
         static FMServer *inst = nullptr;
         if (!inst)
             inst = new FMServer();
-        return inst;
+        return inst->fm;
     }
 
 private:
-    FMStore *fm;
-
     FMServer()
     {
         int id = myNodeConf ? myNodeConf->id : 233;
         fm = new FMStore(id);
     }
+    FMStore *fm;
 };
 
-void processFMRPC(const RPCMessage *request, RPCMessage *response)
+void fmHandleTest(erpc::ReqHandle *reqHandle, void *context)
 {
-    const int MAX_READDIR_LEN = 511;
-
-    using std::string;
-
-    auto *fms = FMServer::getInstance();
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    resp->value = 0;
+    sendResponse(reqHandle, context);
+}
+void fmHandleAccess(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
     FileAccessInode fai;
+    resp->value = FMServer::getInstance()->access(req->path, fai);
+    sendResponse(reqHandle, context);
+}
+void fmHandleCsize(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
     FileContentInode fci;
+    fci.size = req->value;
+    resp->value = FMServer::getInstance()->csize(req->path, fci);
+    sendResponse(reqHandle, context);
+}
+void fmHandleStat(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<StatResponse>(reqHandle, context);
     FileInode fi, fi2;
-    response->type = RPCMessage::RPC_UNDEF;
-    
-    switch (request->type) {
-        case RPCMessage::RPC_TEST: {
-            response->result = 0;
-            break;
-        }
-        case RPCMessage::RPC_CREATE: {
-            string path = request->path;        
-            fai.mode = request->mode;
-            fai.uid = fai.gid = 0777;
-            response->result = fms->fm->create(path, fai);
-            break;
-        }
-        case RPCMessage::RPC_ACCESS: {
-            string path = request->path;
-            response->result = fms->fm->access(path, fai);
-            break;
-        }
-        case RPCMessage::RPC_CSIZE: {
-            string path = request->path;
-            auto *pfci = reinterpret_cast<const FileContentInode *>(request->raw2);
-            response->result = fms->fm->csize(path, *pfci);
-            break;
-        }
-        case RPCMessage::RPC_STAT: {
-            string path = request->path;
-            loco_file_stat st;
-            fms->fm->getAttr(fi, path, fi2);
-            if ((response->result = fi.error) == 0) {
-                st.st.st_mode = S_IFREG | 0744;
-                st.st.st_uid = fi.fa.uid;
-                st.st.st_gid = fi.fa.gid;
-                st.st.st_ctime = fi.fa.ctime;
-                st.st.st_mtime = fi.fc.mtime;
-                st.st.st_atime = fi.fc.mtime;
-                st.st.st_size = fi.fc.size;
-                st.sid = fi.fc.sid;
-                st.suuid = fi.fc.suuid;
-                st.block_size = fi.fc.block_size;
-                memcpy(response->raw, &st, sizeof(loco_file_stat));
-            }
-	    break;
-        }
-        case RPCMessage::RPC_OPEN: {
-            string path = request->path;
-            fms->fm->open(fi, path, fai);
-            memcpy(response->raw, &fi, sizeof(FileInode));
-            break;
-        }
-        case RPCMessage::RPC_READDIR: {
-            int64_t uuid = (int64_t)request->raw64[0];
-            string res;
-            fms->fm->readdir(res, uuid);
-            response->result = res.length();
-            strncpy(reinterpret_cast<char *>(response->raw), res.c_str(), MAX_READDIR_LEN);
-            response->raw[MAX_READDIR_LEN] = 0;
-            break;
-        }
-        case RPCMessage::RPC_REMOVE: {
-            string path = request->path;
-            fms->fm->remove(path, fai);
-            break;
-        }
-        default: {
-            d_err("unexpected RPC type: %d", (int)request->type);
-            return;
-        }
+    FMServer::getInstance()->getAttr(fi, req->path, fi2);
+    if ((resp->result = fi.error) == 0) {
+        resp->fileStat.st.st_mode = S_IFREG | 0744;
+        resp->fileStat.st.st_uid = fi.fa.uid;
+        resp->fileStat.st.st_gid = fi.fa.gid;
+        resp->fileStat.st.st_ctime = fi.fa.ctime;
+        resp->fileStat.st.st_mtime = fi.fc.mtime;
+        resp->fileStat.st.st_atime = fi.fc.mtime;
+        resp->fileStat.st.st_size = fi.fc.size;
+        resp->fileStat.sid = fi.fc.sid;
+        resp->fileStat.suuid = fi.fc.suuid;
+        resp->fileStat.block_size = fi.fc.block_size;
     }
+    sendResponse(reqHandle, context);
+}
+void fmHandleOpen(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<InodeResponse>(reqHandle, context);
+    FileAccessInode fai;
+    FMServer::getInstance()->open(resp->fi, req->path, fai);
+    sendResponse(reqHandle, context);
+}
+void fmHandleCreate(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    FileAccessInode fai;
+    fai.mode = req->value;
+    fai.uid = fai.gid = 0777;
+    resp->value = FMServer::getInstance()->create(req->path, fai);
+    sendResponse(reqHandle, context);
+}
+void fmHandleRemove(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<ValueWithPathRequest>(reqHandle);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    FileAccessInode fai;
+    resp->value = FMServer::getInstance()->remove(req->path, fai);
+    sendResponse(reqHandle, context);
+}
+void fmHandleReaddir(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<PureValueRequest>(reqHandle);
+    auto *resp = allocateResponse<RawResponse>(reqHandle, context);
+    std::string result;
+    FMServer::getInstance()->readdir(result, req->value);
+    resp->len = result.length();
+    strncpy(reinterpret_cast<char *>(resp->raw), result.c_str(), RawResponse::RAW_SIZE);
+    resp->raw[RawResponse::RAW_SIZE] = 0;
+    sendResponse(reqHandle, context);
 }
 
 std::mutex mut;
@@ -129,18 +127,35 @@ int main(int argc, char **argv)
     FMServer::getInstance();
     cmdConf = new CmdLineConfig();
     ECAL ecal;
-    ecal.getRPCInterface()->registerRPCProcessor(processFMRPC);
-    
-    printf("FMServer: main thread sleep.\n");
-    fflush(stdout);
 
-    while (!ctrlCPressed)
-        ctrlCCond.wait(lock);
+    /* Initialize RPC engine */
+    {
+        std::unordered_map<int, erpc::erpc_req_func_t> reqFuncs;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_TEST)] = fmHandleTest;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_ACCESS)] = fmHandleAccess;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_CSIZE)] = fmHandleCsize;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_FILESTAT)] = fmHandleStat;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_CREATE)] = fmHandleCreate;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_REMOVE)] = fmHandleRemove;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_OPEN)] = fmHandleOpen;
+        reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = fmHandleReaddir;
 
-    printf("FMServer: Ctrl-C, stopListenerAndJoin\n");
-    fflush(stdout);
+        NetworkInterface netif(reqFuncs);
 
-    ecal.getRPCInterface()->stopListenerAndJoin();
+        printf("FMServer: ECAL constructed & exited ctor.\n");
+        fflush(stdout);
+        
+        printf("FMServer: main thread sleep.\n");
+        fflush(stdout);
+
+        while (!ctrlCPressed)
+            ctrlCCond.wait(lock);
+
+        printf("FMServer: Ctrl-C, stopListenerAndJoin\n");
+        fflush(stdout);
+    }
+
+    ecal.getRDMASocket()->stopListenerAndJoin();
 
     return 0;
 }

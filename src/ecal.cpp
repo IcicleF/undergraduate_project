@@ -15,9 +15,23 @@ ECAL::ECAL()
         d_warn("memConf is already initialized, skip");
     else
         memConf = new MemoryConfig(*cmdConf);
-    
+
+    if (clusterConf != nullptr || myNodeConf != nullptr)
+        d_warn("clusterConf & myNodeConf were already initialized, skip");
+    else {
+        clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
+        
+        auto myself = clusterConf->findMyself();
+        if (myself.id >= 0)
+            myNodeConf = new NodeConfig(myself);
+        else {
+            d_err("cannot find configuration of this node");
+            exit(-1);
+        }
+    }
+
     allocTable = new BlockPool<BlockTy>();
-    rpcInterface = new RPCInterface();
+    rdma = new RDMASocket();
 
     if (clusterConf->getClusterSize() % N != 0) {
         d_err("FIXME: clusterSize %% N != 0, exit");
@@ -35,6 +49,7 @@ ECAL::ECAL()
     for (int i = 0; i < P; ++i)
         parity[i] = encodeBuffer + i * BlockTy::size;
 
+#if 0
     /* Start recovery process if this is a recovery */
     if (cmdConf->recover) {
         d_warn("start data recovery...");
@@ -152,6 +167,7 @@ ECAL::ECAL()
 
         d_warn("finished data recovery! ECAL start.");
     }
+#endif
 }
 
 ECAL::~ECAL()
@@ -174,7 +190,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     int errs = 0;
     for (int i = 0, j = 0; i < K && j < N; ++j) {
         int peerId = (j + pos.startNodeId) % N;
-        if (rpcInterface->isPeerAlive(peerId)) 
+        if (rdma->isPeerAlive(peerId)) 
             decodeIndex[i++] = j;
         else if (j < K) {
             errIndex[errs] = j;
@@ -188,8 +204,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     for (int i = 0; i < K; ++i) {
         int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id) {
-            uint8_t *base = rpcInterface->getRDMASocket()->getReadRegion(peerId);
-            rpcInterface->remoteReadFrom(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
+            uint8_t *base = rdma->getReadRegion(peerId);
+            rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
             recoverSrc[i] = base;
             ++taskCnt;
         }
@@ -197,11 +213,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
     }
 
-    ibv_wc wc[2];
-    while (taskCnt) {
-        taskCnt -= rpcInterface->getRDMASocket()->pollSendCompletion(wc);
-        //d_info("wc->status=%d", (int)wc->status);
-    }
+    ibv_wc wc[MAX_NODES << 1];
+    rdma->pollSendCompletion(wc, taskCnt);
 
     /* Copy intact data */
     for (int i = 0; i < K; ++i)
@@ -232,7 +245,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     for (int i = 0; i < K; ++i) {
         int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id)
-            rpcInterface->getRDMASocket()->freeReadRegion(peerId, recoverSrc[i]);
+            rdma->freeReadRegion(peerId, recoverSrc[i]);
     }
 }
 
@@ -252,11 +265,11 @@ void ECAL::writeBlock(ECAL::Page &page)
         
         if (peerId == myNodeConf->id)
             memcpy(allocTable->at(pos.row), blk, BlockTy::size);
-        else if (rpcInterface->isPeerAlive(peerId)) {
-            uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
+        else if (rdma->isPeerAlive(peerId)) {
+            uint8_t *base = rdma->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
-            rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
-            rpcInterface->getRDMASocket()->freeWriteRegion(peerId, base);
+            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
+            rdma->freeWriteRegion(peerId, base);
         }
     }
 }

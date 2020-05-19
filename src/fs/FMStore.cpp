@@ -88,13 +88,10 @@ int32_t FMStore::setValue(const std::string &Key, const FileInode &fi)
 int32_t FMStore::create(const std::string &Key, const FileAccessInode &fa)
 {
     FileAccessInode faa;
-    faa.ctime = time(NULL);
     faa.mode = fa.mode;
     faa.gid = fa.gid;
     faa.uid = fa.uid;
     FileContentInode fcc;
-    fcc.atime = time(NULL);
-    fcc.mtime = time(NULL);
     fcc.origin_name = Key;
     fcc.block_size = 4096;
     fcc.size = 0;
@@ -156,7 +153,6 @@ int32_t FMStore::chown(const std::string &Key, const FileAccessInode &fa)
     getValue(Key, faa);
     faa.uid = fa.uid;
     faa.gid = fa.gid;
-    faa.ctime = time(NULL);
     setValue(Key, faa);
     return 0;
 }
@@ -165,7 +161,6 @@ int32_t FMStore::chmod(const std::string &Key, const FileAccessInode &fa)
     FileAccessInode faa;
     getValue(Key, faa);
     faa.mode = fa.mode;
-    faa.ctime = time(NULL);
     setValue(Key, faa);
     return 0;
 }
@@ -196,8 +191,6 @@ int32_t FMStore::csize(const std::string &Key, const FileContentInode &fc)
         return -1;
     //LOG(INFO) << __FUNCTION__ << " Key: " << Key << " size: " << fc.size;
     fcc.size = fc.size;
-    fcc.mtime = time(NULL);
-    fcc.atime = time(NULL);
     if (setValue(Key, fcc) < 0)
         return -1;
     return 0;
@@ -209,7 +202,6 @@ void FMStore::getAttr(FileInode &_return, const std::string &Key, const FileInod
         _return.error = -1;
     }
     else {
-        _return.fc.atime = time(NULL);
         setValue(Key, _return);
         _return.error = 0;
         //LOG(INFO) << __FUNCTION__ << " Key: " << Key;
@@ -221,7 +213,6 @@ void FMStore::getContent(FileContentInode &_return, const std::string &Key, cons
         _return.error = -1;
     }
     else {
-        _return.atime = time(NULL);
         setValue(Key, _return);
         _return.error = 0;
         //LOG(INFO) << __FUNCTION__ << " Key: " << Key;
@@ -246,8 +237,6 @@ int32_t FMStore::utimens(const std::string &Key, const FileContentInode &fc)
     if (getValue(Key, fcc) < 0) {
         return -1;
     }
-    fcc.mtime = time(NULL);
-    fcc.atime = time(NULL);
     if (setValue(Key, fcc) < 0)
         return -1;
     return 0;

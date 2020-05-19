@@ -5,13 +5,17 @@
 #include "rdma.hpp"         // self-written RDMA
 #include "msg.hpp"          // new RPC message buffer definitions
 #include "../bitmap.hpp"
+#include "../debug.hpp"
 
 enum class ErpcType
 {
+    ERPC_CONNECT,
+    ERPC_DISCONNECT,
     ERPC_TEST,
     ERPC_OPEN,
     ERPC_ACCESS,
     ERPC_CREATE,
+    ERPC_CSIZE,
     ERPC_READ,
     ERPC_WRITE,
     ERPC_REMOVE,
@@ -19,59 +23,61 @@ enum class ErpcType
     ERPC_DIRSTAT,
     ERPC_MKDIR,
     ERPC_RMDIR,
-    ERPC_OPENDIR,
     ERPC_READDIR
 };
 
 void smHandler(int sessionNum, erpc::SmEventType event, erpc::SmErrType err, void *context);
 void contFunc(void *context, void *tag);
+void connectHandler(erpc::ReqHandle *reqHandle, void *context);
 
+/* ERPC Interface */
 class NetworkInterface
 {
     static const int NLockers = 32;
 
     friend void smHandler(int, erpc::SmEventType, erpc::SmErrType, void *);
     friend void contFunc(void *, void *);
+    friend void connectHandler(erpc::ReqHandle *, void *);
 
 public:
     explicit NetworkInterface(const std::unordered_map<int, erpc::erpc_req_func_t> &rpcProcessors)
     {
-        if (cmdConf == nullptr || memConf == nullptr) {
-            d_err("cmdConf & memConf should be initialized!");
-            exit(-1);
-        }
-
-        if (clusterConf != nullptr || myNodeConf != nullptr)
-            d_warn("clusterConf & myNodeConf were already initialized, skip");
-        else {
-            clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
-            
-            auto myself = clusterConf->findMyself();
-            if (myself.id >= 0)
-                myNodeConf = new NodeConfig(myself);
-            else {
-                d_err("cannot find configuration of this node");
-                exit(-1);
-            }
-        }
-
-        rdma = std::make_unique<RDMASocket>();
-
         std::string serverURI = myNodeConf->hostname + ":" + std::to_string(cmdConf->udpPort);
         nexus = std::make_unique<erpc::Nexus>(serverURI, 0, 0);
         for (auto v : rpcProcessors)
             nexus->register_req_func(v.first, v.second);
+        nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 
+        /* Servers do not need to connect to other nodes */
+        if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
+            return;
+
+        /* Clients should connect to servers */
         for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
             NodeConfig conf = (*clusterConf)[i];
-            if (conf.id == myNodeConf->id)
+            if ((static_cast<int>(conf.type) & NODE_SERVER) == 0)
                 continue;
             if ((!cmdConf->recover && conf.id < myNodeConf->id) || cmdConf->recover) {
                 std::string uri = conf.hostname + ":" + std::to_string(cmdConf->udpPort);
-                sessions[conf.id] = rpc->create_session(uri, 0);
+                int sess = sessions[conf.id] = rpc->create_session(uri, 0);
+                sess2id[sess] = conf.id;
                 while (!rpc->is_connected(sessions[conf.id]))
                     rpc->run_event_loop_once();
+
+                /* Send an RPC call to inform server of my identity */
+                {
+                    /* Wait to avoid remote unordered_map corruption */
+                    std::this_thread::sleep_for(std::chrono::microseconds(10));
+
+                    PureValueRequest notifyReq;
+                    PureValueResponse notifyResp;
+                    notifyReq.value = myNodeConf->id;
+                    notifyResp.value = -1;
+                    rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
+                    if (notifyResp.value < 0)
+                        d_err("failed to notify ID to peer: %d", conf.id);
+                }
             }
         }
 
@@ -91,14 +97,7 @@ public:
             rpc->free_msg_buffer(locks[i].respBuf);
     }
 
-    inline void rdmaRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0)
-    {
-        rdma->postRead(peerId, remoteSrcShift, localDst, length, taskId);
-    }
-    inline void rdmaWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
-    {
-        rdma->postWrite(peerId, remoteDstShift, localSrc, length, imm);
-    }
+    inline erpc::Rpc<erpc::CTransport> *getRPC() { return rpc.get(); }
 
     template <typename ReqTy, typename RespTy>
     bool rpcCall(int peerId, ErpcType type, const ReqTy &req, RespTy &resp)
@@ -118,6 +117,7 @@ public:
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
         return true;
     }
+
     void rpcListen()
     {
         while (shouldRun.load())
@@ -149,9 +149,8 @@ private:
         }
     };
 
-    std::shared_ptr<erpc::Nexus> nexus;
-    std::shared_ptr<erpc::Rpc<erpc::CTransport>> rpc;
-    std::shared_ptr<RDMASocket> rdma;
+    std::unique_ptr<erpc::Nexus> nexus;
+    std::unique_ptr<erpc::Rpc<erpc::CTransport>> rpc;
 
     std::atomic<bool> shouldRun;
     std::thread listener;
@@ -162,5 +161,22 @@ private:
     Locker locks[NLockers];
     Bitmap<NLockers> bitmap;
 };
+
+template <typename Ty>
+inline Ty *interpretRequest(erpc::ReqHandle *reqHandle)
+{
+    return reinterpret_cast<Ty *>(reqHandle->get_req_msgbuf()->buf);
+}
+
+template <typename Ty>
+inline Ty *allocateResponse(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *netif = reinterpret_cast<NetworkInterface *>(context);
+    auto &resp = reqHandle->pre_resp_msgbuf;
+    netif->getRPC()->resize_msg_buffer(&resp, sizeof(Ty));
+    return reinterpret_cast<Ty *>(resp.buf);
+}
+
+void sendResponse(erpc::ReqHandle *reqHandle, void *context);
 
 #endif // NETIF_HPP

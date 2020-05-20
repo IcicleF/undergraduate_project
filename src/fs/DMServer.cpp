@@ -108,7 +108,7 @@ DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
-#if 0
+#if 1
     std::unique_lock<std::mutex> lock(mut);
     signal(SIGINT, CtrlCHandler);
     COLLECT_MAIN_INFO();
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
     }
 
     ecal.getRDMASocket()->stopListenerAndJoin();
-#endif
+#else
     cmdConf = new CmdLineConfig;
     memConf = new MemoryConfig(*cmdConf);
     clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
@@ -152,6 +152,7 @@ int main(int argc, char **argv)
     myNodeConf = new NodeConfig(myself);
     
     NetworkInterface netif;
+#endif
 
     return 0;
 }

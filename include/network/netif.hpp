@@ -51,11 +51,11 @@ public:
 
         if (myNodeConf->type == NODE_DMS) {
             nexus->register_req_func(2, dummyHandler);
-            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, nullptr);
+            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
             rpc->run_event_loop(10000);
         }
         else if (myNodeConf->type == NODE_CLIENT) {
-            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, nullptr);
+            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
             std::string server_uri = "aep1:31850";
             int session_num = rpc->create_session(server_uri, 0);
 
@@ -94,6 +94,7 @@ public:
                         rpc->run_event_loop_once();
 
                     /* Send an RPC call to inform server of my identity */
+                    /*
                     {
                         PureValueRequest notifyReq;
                         PureValueResponse notifyResp;
@@ -103,6 +104,11 @@ public:
                         if (notifyResp.value < 0)
                             d_err("failed to notify ID to peer: %d", conf.id);
                     }
+                    */
+                    erpc::MsgBuffer req = rpc->alloc_msg_buffer_or_die(sizeof(PureValueRequest));
+                    erpc::MsgBuffer resp = rpc->alloc_msg_buffer_or_die(sizeof(PureValueResponse));
+                    rpc->enqueue_request(sessions[conf.id], 10, &req, &resp, dummyContFunc, nullptr);
+                    rpc->run_event_loop(1000);
                 }
             }
         }

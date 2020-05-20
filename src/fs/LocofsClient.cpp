@@ -573,7 +573,7 @@ DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
-#if 0
+#if 1
     using namespace std;
     using namespace std::chrono;
 
@@ -643,7 +643,7 @@ int main(int argc, char **argv)
     printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
     loco.stop();
-#endif
+#else
     cmdConf = new CmdLineConfig;
     memConf = new MemoryConfig(*cmdConf);
     clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
@@ -651,6 +651,7 @@ int main(int argc, char **argv)
     myNodeConf = new NodeConfig(myself);
     
     NetworkInterface netif;
+#endif
 
     return 0;
 }

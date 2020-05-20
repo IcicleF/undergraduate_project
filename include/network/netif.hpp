@@ -99,7 +99,8 @@ public:
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));
         
         shouldRun.store(true);
-        listener = std::thread(&NetworkInterface::rpcListen, this);
+        if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
+            listener = std::thread(&NetworkInterface::rpcListen, this);
     }
     ~NetworkInterface()
     {
@@ -124,9 +125,11 @@ public:
             return false;
         
         /* Enqueued requests need event loops to be sent */
+        locks[idx].completed = false;
         rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
-        locks[idx].wait();
+        while (!locks[idx].complete)
+            rpc->run_event_loop_once();
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
         
         rpc->free_msg_buffer(reqBuf);
@@ -144,26 +147,11 @@ private:
     using BitmapTy = typename Bits2Type<NLockers>::type;
     struct Locker
     {
-        std::mutex mutex;
-        std::condition_variable cv;
-        bool completed;
+        volatile bool completed;
         erpc::MsgBuffer respBuf; 
 
         explicit Locker() = default;
-        void wait()
-        {   
-            std::unique_lock<std::mutex> lock(mutex);
-            completed = false;
-            d_info("start waiting process...");
-            while (!completed)
-                cv.wait(lock);
-        }
-        void complete()
-        {
-            std::unique_lock<std::mutex> lock(mutex);
-            completed = true;
-            cv.notify_one();
-        }
+        inline void complete() { completed = true; }
     };
 
     std::unique_ptr<erpc::Nexus> nexus;

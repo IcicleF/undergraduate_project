@@ -97,17 +97,9 @@ public:
 
         for (int i = 0; i < NLockers; ++i)
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));
-        
-        shouldRun.store(true);
-        if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
-            listener = std::thread(&NetworkInterface::rpcListen, this);
     }
     ~NetworkInterface()
     {
-        shouldRun.store(false);
-        if (listener.joinable())
-            listener.join();
-        
         for (int i = 0; i < NLockers; ++i)
             rpc->free_msg_buffer(locks[i].respBuf);
     }
@@ -128,7 +120,7 @@ public:
         locks[idx].completed = false;
         rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
-        while (!locks[idx].complete)
+        while (!locks[idx].completed)
             rpc->run_event_loop_once();
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
         
@@ -137,10 +129,17 @@ public:
         return true;
     }
 
-    void rpcListen()
+    void startServer(int checkInterval = 1000)
     {
-        while (shouldRun.load())
-            rpc->run_event_loop(1000);
+        shouldRun = true;
+        while (shouldRun)
+            rpc->run_event_loop(checkInterval);
+    }
+
+    /* Once started, it is impossible to stop without something like signals */
+    void stopServer()
+    {
+        shouldRun = false;
     }
 
 private:
@@ -157,7 +156,7 @@ private:
     std::unique_ptr<erpc::Nexus> nexus;
     std::unique_ptr<erpc::Rpc<erpc::CTransport>> rpc;
 
-    std::atomic<bool> shouldRun;
+    volatile bool shouldRun;
     std::thread listener;
 
     int sessions[MAX_NODES];

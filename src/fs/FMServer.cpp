@@ -106,21 +106,17 @@ void fmHandleReaddir(erpc::ReqHandle *reqHandle, void *context)
     sendResponse(reqHandle, context);
 }
 
-std::mutex mut;
-std::condition_variable ctrlCCond;
-bool ctrlCPressed = false;
+NetworkInterface *netif;
 void CtrlCHandler(int sig)
 {
-    std::unique_lock<std::mutex> lock(mut);
-    ctrlCPressed = true;
-    ctrlCCond.notify_one();
+    if (netif)
+        netif->stopServer();
 }
 
 DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
-    std::unique_lock<std::mutex> lock(mut);
     signal(SIGINT, CtrlCHandler);
     COLLECT_MAIN_INFO();
 
@@ -129,31 +125,28 @@ int main(int argc, char **argv)
     ECAL ecal;
 
     /* Initialize RPC engine */
-    {
-        std::unordered_map<int, erpc::erpc_req_func_t> reqFuncs;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_TEST)] = fmHandleTest;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_ACCESS)] = fmHandleAccess;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_CSIZE)] = fmHandleCsize;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_FILESTAT)] = fmHandleStat;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_CREATE)] = fmHandleCreate;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_REMOVE)] = fmHandleRemove;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_OPEN)] = fmHandleOpen;
-        reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = fmHandleReaddir;
+    std::unordered_map<int, erpc::erpc_req_func_t> reqFuncs;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_TEST)] = fmHandleTest;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_ACCESS)] = fmHandleAccess;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_CSIZE)] = fmHandleCsize;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_FILESTAT)] = fmHandleStat;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_CREATE)] = fmHandleCreate;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_REMOVE)] = fmHandleRemove;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_OPEN)] = fmHandleOpen;
+    reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = fmHandleReaddir;
 
-        NetworkInterface netif(reqFuncs);
+    netif = new NetworkInterface(reqFuncs);
 
-        printf("FMServer: ECAL constructed & exited ctor.\n");
-        fflush(stdout);
-        
-        printf("FMServer: main thread sleep.\n");
-        fflush(stdout);
+    printf("FMServer: ECAL constructed & exited ctor.\n");
+    fflush(stdout);
+    
+    printf("FMServer: main thread sleep.\n");
+    fflush(stdout);
 
-        while (!ctrlCPressed)
-            ctrlCCond.wait(lock);
+    netif->startServer();
 
-        printf("FMServer: Ctrl-C, stopListenerAndJoin\n");
-        fflush(stdout);
-    }
+    printf("FMServer: Ctrl-C, stopListenerAndJoin\n");
+    fflush(stdout);
 
     ecal.getRDMASocket()->stopListenerAndJoin();
 

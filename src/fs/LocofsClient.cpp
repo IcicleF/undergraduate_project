@@ -644,6 +644,12 @@ int main(int argc, char **argv)
 
     loco.stop();
 #endif
+    cmdConf = new CmdLineConfig;
+    memConf = new MemoryConfig(*cmdConf);
+    clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
+    auto myself = clusterConf->findMyself();
+    myNodeConf = new NodeConfig(myself);
+    
     NetworkInterface netif;
 
     return 0;

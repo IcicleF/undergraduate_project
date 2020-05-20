@@ -45,9 +45,9 @@ public:
         std::string serverURI = myNodeConf->hostname + ":" + std::to_string(cmdConf->udpPort);
         nexus = std::make_unique<erpc::Nexus>(serverURI, 0, 0);
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
-            for (auto v : rpcProcessors)
-                nexus->register_req_func(v.first, v.second);
-            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
+            //for (auto v : rpcProcessors)
+            //    nexus->register_req_func(v.first, v.second);
+            nexus->register_req_func(2, connectHandler);
         }
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 
@@ -81,11 +81,7 @@ public:
 
         for (int i = 0; i < NLockers; ++i)
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));
-
-        if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
-            /* First, run some event loop for test */
-            rpc->run_event_loop(10000);
-        }
+        
         shouldRun.store(true);
         listener = std::thread(&NetworkInterface::rpcListen, this);
     }
@@ -111,7 +107,7 @@ public:
         if (idx == -1)
             return false;
         
-        rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
+        rpc->enqueue_request(sessions[peerId], 2, &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
         d_info("request enqueued");
         locks[idx].wait();

@@ -27,28 +27,21 @@ void contFunc(void *context, void *tag)
     auto *netif = reinterpret_cast<NetworkInterface *>(context);
     auto idx = reinterpret_cast<uintptr_t>(tag);
 
+    d_info("contFunc triggered, response from %d", static_cast<int>(idx));
+
     netif->locks[idx].complete();
 }
 
 void connectHandler(erpc::ReqHandle *reqHandle, void *context)
 {
-    auto *netif = reinterpret_cast<NetworkInterface *>(context);
-    //int sessId = reqHandle->session->get_local_session_id();
-    
-    auto *msgBuf = reqHandle->get_req_msgbuf()->buf;
-    auto *notifyReq = reinterpret_cast<PureValueRequest *>(msgBuf);
-    int peerId = notifyReq->value;
-    //netif->sessions[peerId] = sessId;
-    //netif->sess2id[sessId] = peerId;
+    auto *req = interpretRequest<PureValueRequest>(reqHandle);
+    int peerId = static_cast<int>(req->value);
 
     d_info("Received connection from: peer %d", peerId);
 
-    auto &resp = reqHandle->pre_resp_msgbuf;
-    netif->rpc->resize_msg_buffer(&resp, sizeof(PureValueResponse));
-    auto *notifyResp = reinterpret_cast<PureValueResponse *>(resp.buf);
-    notifyResp->value = myNodeConf->id;
-
-    netif->rpc->enqueue_response(reqHandle, &resp);
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    resp->value = myNodeConf->id;
+    sendResponse(reqHandle, context);
 }
 
 void sendResponse(erpc::ReqHandle *reqHandle, void *context)

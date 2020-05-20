@@ -67,14 +67,11 @@ public:
 
                     /* Send an RPC call to inform server of my identity */
                     {
-                        /* Wait to avoid remote unordered_map corruption */
-                        std::this_thread::sleep_for(std::chrono::microseconds(10));
-
                         PureValueRequest notifyReq;
                         PureValueResponse notifyResp;
                         notifyReq.value = myNodeConf->id;
                         notifyResp.value = -1;
-                        if (!rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp)) d_info("shit");
+                        rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
                         if (notifyResp.value < 0)
                             d_err("failed to notify ID to peer: %d", conf.id);
                     }
@@ -112,6 +109,7 @@ public:
         
         rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
+        d_info("request enqueued");
         locks[idx].wait();
         bitmap.freeBit(idx);
 
@@ -121,7 +119,6 @@ public:
 
     void rpcListen()
     {
-        d_warn("RPC listener started.");
         while (shouldRun.load())
             rpc->run_event_loop(1000);
     }
@@ -140,13 +137,13 @@ private:
         {   
             std::unique_lock<std::mutex> lock(mutex);
             completed = false;
+            d_info("start waiting process...");
             while (!completed)
                 cv.wait(lock);
         }
         void complete()
         {
             std::unique_lock<std::mutex> lock(mutex);
-	    d_info("locker interfered");
             completed = true;
             cv.notify_one();
         }

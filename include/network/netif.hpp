@@ -9,7 +9,7 @@
 
 enum class ErpcType
 {
-    ERPC_CONNECT,
+    ERPC_CONNECT = 10,
     ERPC_DISCONNECT,
     ERPC_TEST,
     ERPC_OPEN,
@@ -44,15 +44,15 @@ public:
     {
         std::string serverURI = myNodeConf->hostname + ":" + std::to_string(cmdConf->udpPort);
         nexus = std::make_unique<erpc::Nexus>(serverURI, 0, 0);
-        for (auto v : rpcProcessors)
-            nexus->register_req_func(v.first, v.second);
-        nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
+        if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
+            for (auto v : rpcProcessors)
+                nexus->register_req_func(v.first, v.second);
+            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
+        }
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 
-        /* Servers do not need to connect to other nodes */
-        if (static_cast<int>(myNodeConf->type) & NODE_SERVER)
-            ;
-        else { /* Clients should connect to servers */
+        /* Clients connect to servers */
+        if ((static_cast<int>(myNodeConf->type) & NODE_SERVER) == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
                 NodeConfig conf = (*clusterConf)[i];
@@ -82,6 +82,10 @@ public:
         for (int i = 0; i < NLockers; ++i)
             locks[i].respBuf = rpc->alloc_msg_buffer_or_die(sizeof(GeneralResponse));
 
+        if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
+            /* First, run some event loop for test */
+            rpc->run_event_loop(10000);
+        }
         shouldRun.store(true);
         listener = std::thread(&NetworkInterface::rpcListen, this);
     }
@@ -111,9 +115,10 @@ public:
                              contFunc, reinterpret_cast<void *>(idx));
         d_info("request enqueued");
         locks[idx].wait();
-        bitmap.freeBit(idx);
-
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
+        
+        rpc->free_msg_buffer(reqBuf);
+        bitmap.freeBit(idx);
         return true;
     }
 

@@ -28,7 +28,9 @@ enum class ErpcType
 
 void smHandler(int sessionNum, erpc::SmEventType event, erpc::SmErrType err, void *context);
 void contFunc(void *context, void *tag);
+void dummyContFunc(void *, void *);
 void connectHandler(erpc::ReqHandle *reqHandle, void *context);
+void dummyHandler(erpc::ReqHandle *reqHandle, void *context);
 
 /* ERPC Interface */
 class NetworkInterface
@@ -40,14 +42,40 @@ class NetworkInterface
     friend void connectHandler(erpc::ReqHandle *, void *);
 
 public:
+    explicit NetworkInterface()
+    {
+        d_info("Debugging.");
+        std::string serverURI = myNodeConf->ipAddrStr + ":" + std::to_string(cmdConf->udpPort);
+        d_info("listening RPC at %s", serverURI.c_str());
+        nexus = std::make_unique<erpc::Nexus>(serverURI, 0, 0);
+
+        if (myNodeConf->type == NODE_DMS) {
+            nexus->register_req_func(2, dummyHandler);
+            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, nullptr);
+            rpc->run_event_loop(10000);
+        }
+        else if (myNodeConf->type == NODE_CLIENT) {
+            rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, nullptr);
+            std::string server_uri = "aep1:31850";
+            int session_num = rpc->create_session(server_uri, 0);
+
+            while (!rpc->is_connected(session_num)) rpc->run_event_loop_once();
+
+            erpc::MsgBuffer req = rpc->alloc_msg_buffer_or_die(sizeof(PureValueRequest));
+            erpc::MsgBuffer resp = rpc->alloc_msg_buffer_or_die(sizeof(PureValueResponse));
+
+            rpc->enqueue_request(session_num, 2, &req, &resp, dummyContFunc, nullptr);
+            rpc->run_event_loop(1000);
+        }
+    }
     explicit NetworkInterface(const std::unordered_map<int, erpc::erpc_req_func_t> &rpcProcessors)
     {
         std::string serverURI = myNodeConf->hostname + ":" + std::to_string(cmdConf->udpPort);
         nexus = std::make_unique<erpc::Nexus>(serverURI, 0, 0);
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
-            //for (auto v : rpcProcessors)
-            //    nexus->register_req_func(v.first, v.second);
-            nexus->register_req_func(2, connectHandler);
+            for (auto v : rpcProcessors)
+                nexus->register_req_func(v.first, v.second);
+            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
         }
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 
@@ -107,7 +135,7 @@ public:
         if (idx == -1)
             return false;
         
-        rpc->enqueue_request(sessions[peerId], 2, &reqBuf, &locks[idx].respBuf,
+        rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
         d_info("request enqueued");
         locks[idx].wait();

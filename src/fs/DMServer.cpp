@@ -108,6 +108,7 @@ DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
+#if 0
     std::unique_lock<std::mutex> lock(mut);
     signal(SIGINT, CtrlCHandler);
     COLLECT_MAIN_INFO();
@@ -143,6 +144,8 @@ int main(int argc, char **argv)
     }
 
     ecal.getRDMASocket()->stopListenerAndJoin();
+#endif
+    NetworkInterface netif;
 
     return 0;
 }

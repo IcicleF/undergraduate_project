@@ -573,6 +573,7 @@ DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
+#if 0
     using namespace std;
     using namespace std::chrono;
 
@@ -642,6 +643,8 @@ int main(int argc, char **argv)
     printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
     loco.stop();
+#endif
+    NetworkInterface netif;
 
     return 0;
 }

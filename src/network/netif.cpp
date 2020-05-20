@@ -32,6 +32,11 @@ void contFunc(void *context, void *tag)
     netif->locks[idx].complete();
 }
 
+void dummyContFunc(void *, void *)
+{
+    d_info("dummy cont func triggered");
+}
+
 void connectHandler(erpc::ReqHandle *reqHandle, void *context)
 {
     auto *req = interpretRequest<PureValueRequest>(reqHandle);
@@ -42,6 +47,14 @@ void connectHandler(erpc::ReqHandle *reqHandle, void *context)
     auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
     resp->value = myNodeConf->id;
     sendResponse(reqHandle, context);
+}
+
+void dummyHandler(erpc::ReqHandle *req_handle, void *context) {
+    auto rpc = reinterpret_cast<NetworkInterface *>(context)->getRPC();
+
+    auto &resp = req_handle->pre_resp_msgbuf;
+    rpc->resize_msg_buffer(&resp, sizeof(PureValueResponse));
+    rpc->enqueue_response(req_handle, &resp);
 }
 
 void sendResponse(erpc::ReqHandle *reqHandle, void *context)

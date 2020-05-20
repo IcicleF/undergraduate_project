@@ -37,6 +37,7 @@ void dummyContFunc(void *, void *)
     d_info("dummy cont func triggered");
 }
 
+/* This function is now useless */
 void connectHandler(erpc::ReqHandle *reqHandle, void *context)
 {
     auto *req = interpretRequest<PureValueRequest>(reqHandle);

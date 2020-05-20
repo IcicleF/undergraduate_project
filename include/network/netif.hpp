@@ -75,7 +75,6 @@ public:
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
             for (auto v : rpcProcessors)
                 nexus->register_req_func(v.first, v.second);
-            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_CONNECT), connectHandler);
         }
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 
@@ -92,23 +91,6 @@ public:
                     sess2id[sess] = conf.id;
                     while (!rpc->is_connected(sessions[conf.id]))
                         rpc->run_event_loop_once();
-
-                    /* Send an RPC call to inform server of my identity */
-                    /*
-                    {
-                        PureValueRequest notifyReq;
-                        PureValueResponse notifyResp;
-                        notifyReq.value = myNodeConf->id;
-                        notifyResp.value = -1;
-                        rpcCall(conf.id, ErpcType::ERPC_CONNECT, notifyReq, notifyResp);
-                        if (notifyResp.value < 0)
-                            d_err("failed to notify ID to peer: %d", conf.id);
-                    }
-                    */
-                    erpc::MsgBuffer req = rpc->alloc_msg_buffer_or_die(sizeof(PureValueRequest));
-                    erpc::MsgBuffer resp = rpc->alloc_msg_buffer_or_die(sizeof(PureValueResponse));
-                    rpc->enqueue_request(sessions[conf.id], 10, &req, &resp, dummyContFunc, nullptr);
-                    rpc->run_event_loop(1000);
                 }
             }
         }
@@ -141,9 +123,9 @@ public:
         if (idx == -1)
             return false;
         
+        /* Enqueued requests need event loops to be sent */
         rpc->enqueue_request(sessions[peerId], static_cast<int>(type), &reqBuf, &locks[idx].respBuf,
                              contFunc, reinterpret_cast<void *>(idx));
-        d_info("request enqueued");
         locks[idx].wait();
         memcpy(&resp, locks[idx].respBuf.buf, sizeof(RespTy));
         

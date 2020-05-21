@@ -34,7 +34,7 @@ CmdLineConfig::CmdLineConfig()
     if ((env = getenv("PMEMDEV")))
         pmemDeviceName = env;
     else
-        pmemDeviceName = "/dev/pmem0";
+        pmemDeviceName = "/dev/dax1.0";
     
     if ((env = getenv("PMEMSZ")))
         pmemSize = std::stoi(std::string(env));
@@ -178,7 +178,7 @@ MemoryConfig::MemoryConfig(const CmdLineConfig &conf)
     }
 
     base = (uint64_t)mmap(NULL, conf.pmemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (Unlikely(base == 0)) {
+    if (Unlikely(base + 1 == 0)) {
         d_err("cannot perform mmap (size: %lu, err: %s)", conf.pmemSize, strerror(errno));
         close(fd);
         exit(-1);

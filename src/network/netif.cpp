@@ -27,7 +27,7 @@ void contFunc(void *context, void *tag)
     auto *netif = reinterpret_cast<NetworkInterface *>(context);
     auto idx = reinterpret_cast<uintptr_t>(tag);
 
-    d_info("contFunc triggered, response from %d", static_cast<int>(idx));
+    //d_info("contFunc triggered, response from %d", static_cast<int>(idx));
 
     netif->locks[idx].complete();
 }

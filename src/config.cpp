@@ -34,12 +34,12 @@ CmdLineConfig::CmdLineConfig()
     if ((env = getenv("PMEMDEV")))
         pmemDeviceName = env;
     else
-        pmemDeviceName = "/dev/pmem1";
+        pmemDeviceName = "/dev/pmem0";
     
     if ((env = getenv("PMEMSZ")))
         pmemSize = std::stoi(std::string(env));
     else
-        pmemSize = 1lu << 20;
+        pmemSize = 1lu << 25;
     
     if ((env = getenv("PORT")))
         tcpPort = std::stoi(std::string(env));

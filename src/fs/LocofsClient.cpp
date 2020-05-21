@@ -61,6 +61,8 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     //auto stt = steady_clock::now();
    // auto edt = steady_clock::now();
 
+    //printf("entry "); fflush(stdout);
+
     auto stt = steady_clock::now();
     struct loco_file_stat loco_st;
     if (_get_file_stat(path, loco_st) == false) {
@@ -70,6 +72,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
 
     //d_info("_get_file_stat succ");
+    //printf("_g "); fflush(stdout);
 
     /**
      *  Write data begin
@@ -90,8 +93,11 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         if (block_off || block_off + block_len < Block4K::size) {
             /* Needs a read; TODO: remove read */
             ecal.readBlock(blkno, page);
-            memcpy(page.page.data + block_off, buf + start, block_len);
-            ecal.writeBlock(page);
+            //printf("r"); fflush(stdout);
+	    
+	    memcpy(page.page.data + block_off, buf + start, block_len);
+            //printf("w"); fflush(stdout);
+	    ecal.writeBlock(page);
         }
         else {
             /* Full page */
@@ -600,7 +606,7 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
-    const int N = 100;
+    const int N = 40;
 
     d_info("start roundtrip test...");
     uint64_t tot = 0;
@@ -620,8 +626,11 @@ int main(int argc, char **argv)
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
+        printf("%d ", i); fflush(stdout);
         expectTrue(loco.write(filename, buf, M, i));
+        printf("\n");
     }
+    //printf("\n");
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
 
@@ -638,8 +647,10 @@ int main(int argc, char **argv)
 
     start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
+	//printf("%d ", i); fflush(stdout);
         expectTrue(loco.read(filename, buf, M, i));
     }
+    //printf("\n");
     end = steady_clock::now();
     timespan = duration_cast<microseconds>(end - start).count();
 

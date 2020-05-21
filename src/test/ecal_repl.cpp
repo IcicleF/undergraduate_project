@@ -57,7 +57,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     uint64_t blockShift = getBlockShift(index * K);
     uint8_t *base = rdma->getReadRegion(peerId);
     rdma->postRead(peerId, blockShift, (uint64_t)base, Block4K::size);
-    rdma->pollSendCompletion(wc);
+    //rdma->pollSendCompletion(wc);
 
     memcpy(page.page.data, base, Block4K::size);
     rdma->freeReadRegion(peerId, base);

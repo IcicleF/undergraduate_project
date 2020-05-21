@@ -481,7 +481,7 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
         wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
         wr.imm_data = imm;
     }
-    //wr.send_flags = IBV_SEND_SIGNALED;
+    wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteDstShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 

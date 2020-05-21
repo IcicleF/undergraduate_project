@@ -214,9 +214,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     }
 
     ibv_wc wc[MAX_NODES];
-    while (taskCnt--)
-        rdma->pollSendCompletion(wc);
-    //rdma->pollSendCompletion(wc, taskCnt);
+    rdma->pollSendCompletion(wc, taskCnt);
 
     /* Copy intact data */
     for (int i = 0; i < K; ++i)

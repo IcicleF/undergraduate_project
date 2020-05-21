@@ -21,7 +21,7 @@ ECAL::ECAL()
         memConf = new MemoryConfig(*cmdConf);
     
     allocTable = new BlockPool<BlockTy>();
-    rpcInterface = new RPCInterface();
+    rdma = new RDMASocket();
 
     if (clusterConf->getClusterSize() % N != 0) {
         d_err("FIXME: clusterSize %% N != 0, exit");
@@ -55,12 +55,12 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 
     ibv_wc wc[2];
     uint64_t blockShift = getBlockShift(index * K);
-    uint8_t *base = rpcInterface->getRDMASocket()->getReadRegion(peerId);
-    rpcInterface->remoteReadFrom(peerId, blockShift, (uint64_t)base, Block4K::size);
-    rpcInterface->getRDMASocket()->pollSendCompletion(wc);
+    uint8_t *base = rdma->getReadRegion(peerId);
+    rdma->postRead(peerId, blockShift, (uint64_t)base, Block4K::size);
+    rdma->pollSendCompletion(wc);
 
     memcpy(page.page.data, base, Block4K::size);
-    rpcInterface->getRDMASocket()->freeReadRegion(peerId, base);
+    rdma->freeReadRegion(peerId, base);
 }
 
 void ECAL::writeBlock(ECAL::Page &page)
@@ -71,11 +71,11 @@ void ECAL::writeBlock(ECAL::Page &page)
         
         if (peerId == myNodeConf->id)
             memcpy(allocTable->at(page.index * K), page.page.data, BlockTy::size);
-        else if (rpcInterface->isPeerAlive(peerId)) {
-            uint8_t *base = rpcInterface->getRDMASocket()->getWriteRegion(peerId);
+        else if (rdma->isPeerAlive(peerId)) {
+            uint8_t *base = rdma->getWriteRegion(peerId);
             memcpy(base, page.page.data, Block4K::size);
-            rpcInterface->remoteWriteTo(peerId, blockShift, (uint64_t)base, BlockTy::size, page.index * K);
-            rpcInterface->getRDMASocket()->freeWriteRegion(peerId, base);
+            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, page.index * K);
+            rdma->freeWriteRegion(peerId, base);
         }
     }
 }

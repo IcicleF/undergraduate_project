@@ -509,7 +509,7 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_RDMA_READ;
-    wr.send_flags = IBV_SEND_SIGNALED;
+    //wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteSrcShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 

@@ -69,7 +69,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     auto edt = steady_clock::now();
     meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
 
-    d_info("_get_file_stat succ");
+    //d_info("_get_file_stat succ");
 
     /**
      *  Write data begin
@@ -106,7 +106,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     edt = steady_clock::now();
     data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
 
-    d_info("EC & RDMA succ");
+    //d_info("EC & RDMA succ");
 
     /**
      *  Get Key_FileInode
@@ -118,7 +118,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     edt = steady_clock::now();
     meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
     
-    d_info("_get_file_key succ");
+    //d_info("_get_file_key succ");
 
     /**
      *  Update FileContentInode
@@ -139,7 +139,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     edt = steady_clock::now();
     meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
-    d_info("csize rpc succ");
+    //d_info("csize rpc succ");
 
     return (response.value == 0);
 }
@@ -600,7 +600,7 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
-    const int N = 10;
+    const int N = 100;
 
     d_info("start roundtrip test...");
     uint64_t tot = 0;

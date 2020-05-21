@@ -12,6 +12,8 @@ enum class ErpcType
     ERPC_CONNECT = 10,
     ERPC_DISCONNECT,
     ERPC_TEST,
+    ERPC_MEMREAD,
+    ERPC_MEMWRITE,
     ERPC_OPEN,
     ERPC_ACCESS,
     ERPC_CREATE,
@@ -31,6 +33,8 @@ void contFunc(void *context, void *tag);
 void dummyContFunc(void *, void *);
 void connectHandler(erpc::ReqHandle *reqHandle, void *context);
 void dummyHandler(erpc::ReqHandle *reqHandle, void *context);
+void memReadHandler(erpc::ReqHandle *reqHandle, void *context);
+void memWriteHandler(erpc::ReqHandle *reqHandle, void *context);
 
 /* ERPC Interface */
 class NetworkInterface
@@ -75,6 +79,8 @@ public:
         if (static_cast<int>(myNodeConf->type) & NODE_SERVER) {
             for (auto v : rpcProcessors)
                 nexus->register_req_func(v.first, v.second);
+            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_MEMREAD), memReadHandler);
+            nexus->register_req_func(static_cast<int>(ErpcType::ERPC_MEMWRITE), memWriteHandler);
         }
         rpc = std::make_unique<erpc::Rpc<erpc::CTransport>>(nexus.get(), this, 0, smHandler);
 

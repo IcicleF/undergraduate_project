@@ -136,6 +136,7 @@ int main(int argc, char **argv)
     reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = fmHandleReaddir;
 
     netif = new NetworkInterface(reqFuncs);
+    ecal.regNetif(netif);
 
     printf("FMServer: ECAL constructed & exited ctor.\n");
     fflush(stdout);

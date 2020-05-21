@@ -124,6 +124,7 @@ int main(int argc, char **argv)
     reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = dmHandleReaddir;
     
     netif = new NetworkInterface(reqFuncs);
+    ecal.regNetif(netif);
 
     printf("DMServer: ECAL constructed & exited ctor.\n");
     fflush(stdout);

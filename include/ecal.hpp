@@ -13,6 +13,7 @@
 #include "config.hpp"
 #include "datablock.hpp"
 #include "network/rdma.hpp"
+#include "network/netif.hpp"
 
 class ECAL
 {
@@ -43,6 +44,8 @@ public:
     /* Returns the cluster's capacity in 4kB blocks */
     inline uint64_t getClusterCapacity() const { return capacity; }
 
+    inline void regNetif(NetworkInterface *netif) { this->netif = netif; }
+
 private:
     struct DataPosition
     {
@@ -71,6 +74,8 @@ private:
     {
         return allocTable->getShift(index);
     }
+
+    NetworkInterface *netif;
 };
 
 #endif // ECAL_HPP

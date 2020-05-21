@@ -1,6 +1,8 @@
 #include <ecal.hpp>
 #include <debug.hpp>
 
+#define USE_RPC
+
 /**
  * Constructor initializes `memConf`.
  * Also it initializes `clusterConf`, `myNodeConf` by instantiating an RPCInterface.
@@ -197,7 +199,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             recoverOutput[errs++] = page.page.data + j * BlockTy::size;
         }
     }
-    
+
+#ifndef USE_RPC
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
     int taskCnt = 0;
@@ -215,6 +218,24 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 
     ibv_wc wc[MAX_NODES];
     rdma->pollSendCompletion(wc, taskCnt);
+#else
+    static MemResponse resps[N];
+    int respId = 0;
+
+    uint64_t blockShift = getBlockShift(pos.row);
+    for (int i = 0; i < K; ++i) {
+        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
+        if (peerId != myNodeConf->id) {
+            PureValueRequest req;
+            req.value = blockShift;
+            netif->rpcCall(peerId, ErpcType::ERPC_MEMREAD, req, resps[respId]);
+            recoverSrc[i] = resps[respId].data;
+            respId++;
+        }
+        else
+            recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+    }
+#endif
 
     /* Copy intact data */
     for (int i = 0; i < K; ++i)
@@ -222,11 +243,13 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             memcpy(page.page.data + decodeIndex[i] * BlockTy::size, recoverSrc[i], BlockTy::size);
 
     if (errs == 0) {
+#ifndef USE_RPC
         for (int i = 0; i < K; ++i) {
             int peerId = (decodeIndex[i] + pos.startNodeId) % N;
             if (peerId != myNodeConf->id)
                 rdma->freeReadRegion(peerId, recoverSrc[i]);
         }
+#endif
         return;
     }
     
@@ -248,11 +271,13 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     ec_init_tables(K, errs, decodeMatrix, gfTbls);
     ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
 
+#ifndef USE_RPC
     for (int i = 0; i < K; ++i) {
         int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id)
             rdma->freeReadRegion(peerId, recoverSrc[i]);
     }
+#endif
 }
 
 void ECAL::writeBlock(ECAL::Page &page)
@@ -272,10 +297,18 @@ void ECAL::writeBlock(ECAL::Page &page)
         if (peerId == myNodeConf->id)
             memcpy(allocTable->at(pos.row), blk, BlockTy::size);
         else if (rdma->isPeerAlive(peerId)) {
+#ifndef USE_RPC
             uint8_t *base = rdma->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
             rdma->freeWriteRegion(peerId, base);
+#else
+            MemRequest req;
+            PureValueResponse resp;
+            req.addr = blockShift;
+            memcpy(req.data, blk, BlockTy::size);
+            netif->rpcCall(peerId, ErpcType::ERPC_MEMWRITE, req, resp);
+#endif
         }
     }
 }

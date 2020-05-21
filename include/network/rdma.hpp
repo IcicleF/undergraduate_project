@@ -112,7 +112,7 @@ public:
     {
         //int idx = (addr - peers[peerId].readRegion) / Block4K::capacity;
         //printf("free %d: %d\n", peerId, idx);
-        //peers[peerId].writeBitmap.freeBit(idx);
+        //peers[peerId].readBitmap.freeBit(idx);
     }
 
     int pollSendCompletion(ibv_wc *wc);

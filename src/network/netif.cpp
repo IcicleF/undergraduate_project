@@ -50,12 +50,36 @@ void connectHandler(erpc::ReqHandle *reqHandle, void *context)
     sendResponse(reqHandle, context);
 }
 
-void dummyHandler(erpc::ReqHandle *req_handle, void *context) {
+void dummyHandler(erpc::ReqHandle *req_handle, void *context)
+{
     auto rpc = reinterpret_cast<NetworkInterface *>(context)->getRPC();
 
     auto &resp = req_handle->pre_resp_msgbuf;
     rpc->resize_msg_buffer(&resp, sizeof(PureValueResponse));
     rpc->enqueue_response(req_handle, &resp);
+}
+
+/* Mem read & write handler: debugging RDMA */
+void memReadHandler(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<PureValueRequest>(reqHandle);
+    uintptr_t addr = req->value;
+
+    auto *resp = allocateResponse<MemResponse>(reqHandle, context);
+    auto src = reinterpret_cast<uintptr_t>(memConf->getMemory()) + addr;
+    memcpy(resp->data, reinterpret_cast<const void *>(src), sizeof(MemResponse));
+    sendResponse(reqHandle, context);
+}
+
+void memWriteHandler(erpc::ReqHandle *reqHandle, void *context)
+{
+    auto *req = interpretRequest<MemRequest>(reqHandle);
+    auto dest = reinterpret_cast<uintptr_t>(memConf->getMemory()) + req->addr;
+    memcpy(reinterpret_cast<void *>(dest), req->data, sizeof(MemRequest::data));
+
+    auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    resp->value = sizeof(MemRequest::data);
+    sendResponse(reqHandle, context);
 }
 
 void sendResponse(erpc::ReqHandle *reqHandle, void *context)

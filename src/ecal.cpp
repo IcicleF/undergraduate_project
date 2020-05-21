@@ -197,7 +197,6 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             recoverOutput[errs++] = page.page.data + j * BlockTy::size;
         }
     }
-    printf("decodeIndex decided; "); fflush(stdout);
     
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
@@ -206,11 +205,9 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id) {
             uint8_t *base = rdma->getReadRegion(peerId);
-	    printf("-"); fflush(stdout);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
             recoverSrc[i] = base;
             ++taskCnt;
-	    printf("post; "); fflush(stdout);
         }
         else
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
@@ -227,10 +224,12 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     if (errs == 0) {
         for (int i = 0; i < K; ++i) {
             int peerId = (decodeIndex[i] + pos.startNodeId) % N;
-            if (peerId != myNodeConf->id)
+            if (peerId != myNodeConf->id) {
+                printf("free.\n");
                 rdma->freeReadRegion(peerId, recoverSrc[i]);
+            }
         }
-	return;
+        return;
     }
     
     /* Perform decode */

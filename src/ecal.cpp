@@ -212,11 +212,13 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         else
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
     }
-
-    ibv_wc wc[MAX_NODES];
-    while (taskCnt--)
-        rdma->pollSendCompletion(wc);
+    
+    //d_info("Before poll");
+    //ibv_wc wc[MAX_NODES];
+    //while (taskCnt--)
+    //    rdma->pollSendCompletion(wc);
     //rdma->pollSendCompletion(wc, taskCnt);
+    //d_info("After poll");
 
     /* Copy intact data */
     for (int i = 0; i < K; ++i)

@@ -224,10 +224,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     if (errs == 0) {
         for (int i = 0; i < K; ++i) {
             int peerId = (decodeIndex[i] + pos.startNodeId) % N;
-            if (peerId != myNodeConf->id) {
-                printf("free.\n");
+            if (peerId != myNodeConf->id)
                 rdma->freeReadRegion(peerId, recoverSrc[i]);
-            }
         }
         return;
     }

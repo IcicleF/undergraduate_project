@@ -626,9 +626,9 @@ int main(int argc, char **argv)
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
-        printf("%d ", i); fflush(stdout);
+        //printf("%d ", i); fflush(stdout);
         expectTrue(loco.write(filename, buf, M, i));
-        printf("\n");
+        //printf("\n");
     }
     //printf("\n");
     auto end = steady_clock::now();

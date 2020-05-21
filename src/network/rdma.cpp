@@ -424,7 +424,6 @@ void RDMASocket::postSend(int peerId, uint64_t length)
     wr.num_sge = 1;
     wr.imm_data = myNodeConf->id;
     wr.opcode = IBV_WR_SEND_WITH_IMM;
-    //wr.send_flags = IBV_SEND_INLINE;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
 }
@@ -481,7 +480,7 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
         wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
         wr.imm_data = imm;
     }
-    wr.send_flags = IBV_SEND_SIGNALED;
+    //wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteDstShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
@@ -509,7 +508,7 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
     wr.sg_list = &sge;
     wr.num_sge = 1;
     wr.opcode = IBV_WR_RDMA_READ;
-    //wr.send_flags = IBV_SEND_SIGNALED;
+    wr.send_flags = IBV_SEND_SIGNALED;
     wr.wr.rdma.remote_addr = (uint64_t)peers[peerId].peerMR.addr + remoteSrcShift;
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 

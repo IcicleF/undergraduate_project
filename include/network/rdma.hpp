@@ -100,7 +100,7 @@ public:
         //    std::this_thread::yield();
         //    idx = peers[peerId].readBitmap.allocBit();
         //}
-	//printf("alloc %d: %d\n", peerId, idx);
+        //printf("alloc %d: %d\n", peerId, idx);
         return peers[peerId].readRegion; // + idx * Block4K::capacity;
     }
     inline void freeWriteRegion(int peerId, uint8_t *addr)
@@ -112,7 +112,7 @@ public:
     {
         //int idx = (addr - peers[peerId].readRegion) / Block4K::capacity;
         //printf("free %d: %d\n", peerId, idx);
-	//peers[peerId].writeBitmap.freeBit(idx);
+        //peers[peerId].writeBitmap.freeBit(idx);
     }
 
     int pollSendCompletion(ibv_wc *wc);

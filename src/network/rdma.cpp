@@ -385,12 +385,12 @@ void RDMASocket::verboseQP(int peerId)
         }
     CHECK(RESET);
     CHECK(INIT);
-	CHECK(RTR);
-	CHECK(RTS);
-	CHECK(SQD);
-	CHECK(SQE);
-	CHECK(ERR);
-	CHECK(UNKNOWN);
+    CHECK(RTR);
+    CHECK(RTS);
+    CHECK(SQD);
+    CHECK(SQE);
+    CHECK(ERR);
+    CHECK(UNKNOWN);
 #undef CHECK
 }
 

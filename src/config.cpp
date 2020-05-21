@@ -46,6 +46,16 @@ CmdLineConfig::CmdLineConfig()
     else
         tcpPort = 40346;
 
+    if ((env = getenv("NN")))
+        _N = std::stoi(std::string(env));
+    else
+        _N = 100;
+
+    if ((env = getenv("SZ")))
+        _Size = std::stoi(std::string(env));
+    else
+        _Size = 4096;
+
     udpPort = 31850;
 
     recover = ((env = getenv("RECOVER")) && strcmp(env, "OFF") && strcmp(env, "NO"));

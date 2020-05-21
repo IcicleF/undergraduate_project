@@ -606,7 +606,7 @@ int main(int argc, char **argv)
     expectTrue(loco.create(filename, 0644));
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
-    const int N = 40;
+    const int N = cmdConf->_N;
 
     d_info("start roundtrip test...");
     uint64_t tot = 0;
@@ -616,7 +616,7 @@ int main(int argc, char **argv)
     printf("Network roundtrip: %.2lf us\n\n", (double)tot / N);
 
     srand(time(0));
-    const int M = 16 << 10;
+    const int M = cmdConf->_Size;
     char buf[M];
     for (int i = 0; i < M; ++i)
         buf[i] = rand() % 64 + 32;

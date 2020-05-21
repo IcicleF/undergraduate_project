@@ -31,6 +31,9 @@ struct CmdLineConfig
     int udpPort;                        /* ERPC management port */
     uint64_t pmemSize;                  /* Data pool size in blocks */
     bool recover;                       /* Indicate whether this is a recovery */
+
+    int _N;
+    int _Size;
 };
 
 #define GALOIS_OPTION(t, p) { t, offsetof(CmdLineConfig, p), 1 }

@@ -65,7 +65,7 @@ private:
     inline DataPosition getDataPos(uint64_t index)
     {
         int pagePerRow = clusterConf->getClusterSize() / N;
-        return DataPosition(index / pagePerRow, (index % pagePerRow) * N);
+        return DataPosition(index / pagePerRow, 0);
     }
     inline uint64_t getBlockShift(uint64_t index)
     {

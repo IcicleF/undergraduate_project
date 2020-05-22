@@ -88,6 +88,6 @@ void ECAL::writeBlock(ECAL::Page &page)
     uint64_t blockShift = getBlockShift(row * K);
     uint8_t *base = rdma->getWriteRegion(peerId);
     memcpy(base, page.page.data, Block4K::size);
-    rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, row);
+    rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
     rdma->freeWriteRegion(peerId, base);
 }

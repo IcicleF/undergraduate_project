@@ -88,7 +88,7 @@ void ECAL::writeBlock(ECAL::Page &page)
         else if (rdma->isPeerAlive(peerId)) {
             uint8_t *base = rdma->getWriteRegion(peerId);
             //memcpy(base, page.page.data, Block4K::size);
-            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, page.index * K);
+            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
             rdma->freeWriteRegion(peerId, base);
         }
     }

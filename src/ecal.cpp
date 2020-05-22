@@ -211,8 +211,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         if (peerId != myNodeConf->id) {
             uint8_t *base = rdma->getReadRegion(peerId);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
-	    if (errno) d_warn("boom! at (read %d) (write %d)", readCount, writeCount);
-	    readCount++;
+            if (errno) d_warn("boom! at (read %d) (write %d)", readCount, writeCount);
+            readCount++;
             recoverSrc[i] = base;
             ++taskCnt;
         }
@@ -304,7 +304,7 @@ void ECAL::writeBlock(ECAL::Page &page)
 #ifndef USE_RPC
             uint8_t *base = rdma->getWriteRegion(peerId);
             //memcpy(base, blk, BlockTy::size);
-            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
+            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
             rdma->freeWriteRegion(peerId, base);
 	    writeCount++;
 #else

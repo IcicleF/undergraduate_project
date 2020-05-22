@@ -20,10 +20,8 @@ public:
     ~LocofsClient() = default;
 
     bool mount(const std::string &conf);
-    void stop()
-    {
-        ecal.getRDMASocket()->stopListenerAndJoin();
-    }
+    ECAL *getECAL() { return &ecal; }
+    void stop() { ecal.getRDMASocket()->stopListenerAndJoin(); }
 
     bool write(const std::string &path, const char *buf, int64_t len, int64_t off);
     int64_t read(const std::string &path, char *buf, int64_t len, int64_t off);

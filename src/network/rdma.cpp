@@ -85,6 +85,13 @@ RDMASocket::RDMASocket()
     initialized = true;
     writeLog.resize(WRITE_LOG_SIZE);
     d_info("successfully created RDMASocket!");
+
+    for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+        auto peerNode = (*clusterConf)[i];
+        if (peerNode.id != myNodeConf->id)
+            continue;
+        verboseQP(peerNode.id);
+    }
 }
 
 RDMASocket::~RDMASocket()

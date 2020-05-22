@@ -617,13 +617,12 @@ int main(int argc, char **argv)
     char buf[M];
     for (int i = 0; i < M; ++i)
         buf[i] = rand() % 64 + 32;
-    
 
     d_info("start r/w...");
 
     auto start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
-        expectTrue(loco.write(filename, buf, M, i));
+        expectTrue(loco.write(filename, buf, M, i * M));
     }
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
@@ -634,6 +633,7 @@ int main(int argc, char **argv)
     printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
     printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
     printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
+    printf("\n");
 
     boost_cpu_time = 0;
     meta_rpc_time = 0;
@@ -641,7 +641,16 @@ int main(int argc, char **argv)
     start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
     //printf("%d ", i); fflush(stdout);
-        expectTrue(loco.read(filename, buf, M, i));
+        if (!loco.read(filename, buf, M, i * M)) {
+            printf("failed at %d\n", i);
+            for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+                auto peerNode = (*clusterConf)[i];
+                if (peerNode.id != myNodeConf->id)
+                    continue;
+                loco.getECAL()->getRDMASocket()->verboseQP(peerNode.id);
+            }
+            break;
+        }
     }
     //printf("\n");
     end = steady_clock::now();

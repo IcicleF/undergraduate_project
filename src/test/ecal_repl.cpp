@@ -19,7 +19,21 @@ ECAL::ECAL()
         d_warn("memConf is already initialized, skip");
     else
         memConf = new MemoryConfig(*cmdConf);
-    
+     
+    if (clusterConf != nullptr || myNodeConf != nullptr)
+        d_warn("clusterConf & myNodeConf were already initialized, skip");
+    else {
+        clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
+        
+        auto myself = clusterConf->findMyself();
+        if (myself.id >= 0)
+            myNodeConf = new NodeConfig(myself);
+        else {
+            d_err("cannot find configuration of this node");
+            exit(-1);
+        }
+    }
+
     allocTable = new BlockPool<BlockTy>();
     rdma = new RDMASocket();
 
@@ -73,7 +87,7 @@ void ECAL::writeBlock(ECAL::Page &page)
             memcpy(allocTable->at(page.index * K), page.page.data, BlockTy::size);
         else if (rdma->isPeerAlive(peerId)) {
             uint8_t *base = rdma->getWriteRegion(peerId);
-            memcpy(base, page.page.data, Block4K::size);
+            //memcpy(base, page.page.data, Block4K::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, page.index * K);
             rdma->freeWriteRegion(peerId, base);
         }

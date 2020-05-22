@@ -23,6 +23,7 @@ long meta_rpc_time = 0;
 long data_rdma_time_r = 0, data_rdma_time_w = 0;
 long meta_upd_time_r = 0, meta_upd_time_w = 0;
 
+extern int readCount;
 
 inline uint64_t hashObj(struct loco_file_stat st, int blkid)
 {
@@ -41,6 +42,7 @@ bool LocofsClient::mount(const std::string &conf)
 {
     parseConfig();
     UCache.init(5000);
+    ecal.regNetif(&netif);
     return true;
 }
 
@@ -190,7 +192,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
 
         uint64_t blkno = hashObj(loco_st, block_num) % ecal.getClusterCapacity();
         ecal.readBlock(blkno, page);
-        memcpy(buf + start, page.page.data + block_off,  block_len);
+	memcpy(buf + start, page.page.data + block_off,  block_len);
         
         start += block_len;
         len -= block_len;
@@ -640,8 +642,8 @@ int main(int argc, char **argv)
 
     start = steady_clock::now();
     for (int i = 0; i < N; ++i) {
-    //printf("%d ", i); fflush(stdout);
-        if (!loco.read(filename, buf, M, i * M)) {
+        loco.read(filename, buf, M, i * M);
+        if (errno) {
             printf("failed at %d\n", i);
             for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
                 auto peerNode = (*clusterConf)[i];

@@ -1,7 +1,7 @@
 #include <ecal.hpp>
 #include <debug.hpp>
 
-#define USE_RPC
+//#define USE_RPC
 
 /**
  * Constructor initializes `memConf`.
@@ -180,6 +180,8 @@ ECAL::~ECAL()
     }
 }
 
+int readCount = 0, writeCount = 0;
+
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
     int decodeIndex[K], errIndex[K];
@@ -209,6 +211,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         if (peerId != myNodeConf->id) {
             uint8_t *base = rdma->getReadRegion(peerId);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
+	    if (errno) d_warn("boom! at (read %d) (write %d)", readCount, writeCount);
+	    readCount++;
             recoverSrc[i] = base;
             ++taskCnt;
         }
@@ -216,8 +220,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
     }
 
-    ibv_wc wc[MAX_NODES];
-    rdma->pollSendCompletion(wc, taskCnt);
+    //ibv_wc wc[MAX_NODES];
+    //rdma->pollSendCompletion(wc, taskCnt);
 #else
     static MemResponse resps[N];
     int respId = 0;
@@ -299,9 +303,10 @@ void ECAL::writeBlock(ECAL::Page &page)
         else if (rdma->isPeerAlive(peerId)) {
 #ifndef USE_RPC
             uint8_t *base = rdma->getWriteRegion(peerId);
-            memcpy(base, blk, BlockTy::size);
+            //memcpy(base, blk, BlockTy::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size, pos.row);
             rdma->freeWriteRegion(peerId, base);
+	    writeCount++;
 #else
             MemRequest req;
             PureValueResponse resp;

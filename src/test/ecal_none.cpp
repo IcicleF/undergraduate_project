@@ -20,6 +20,20 @@ ECAL::ECAL()
     else
         memConf = new MemoryConfig(*cmdConf);
     
+    if (clusterConf != nullptr || myNodeConf != nullptr)
+        d_warn("clusterConf & myNodeConf were already initialized, skip");
+    else {
+        clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
+        
+        auto myself = clusterConf->findMyself();
+        if (myself.id >= 0)
+            myNodeConf = new NodeConfig(myself);
+        else {
+            d_err("cannot find configuration of this node");
+            exit(-1);
+        }
+    }
+
     allocTable = new BlockPool<BlockTy>();
     rdma = new RDMASocket();
 

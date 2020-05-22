@@ -294,9 +294,9 @@ void RDMASocket::buildResources(ibv_context *ctx)
     this->ctx = ctx;
     expectNonZero(pd = ibv_alloc_pd(this->ctx));
     for (int i = 0; i < MAX_CQS; ++i) {
-        expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
-        expectNonZero(cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, compChannel[i], 0));
-        // expectZero(ibv_req_notify_cq(cq[i], 0));
+        //expectNonZero(compChannel[i] = ibv_create_comp_channel(this->ctx));
+        cq[i] = ibv_create_cq(this->ctx, MAX_QP_DEPTH, nullptr, nullptr, 0);
+        //expectZero(ibv_req_notify_cq(cq[i], 0));
     }
     
     int mrFlags = IBV_ACCESS_LOCAL_WRITE |
@@ -464,6 +464,14 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
 void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
                            uint64_t length, int imm)
 {
+    static int temp = 0;
+    if (temp < 10) {
+        ++temp;
+        d_info("post write: local addr %p -> remote shift %p, len %lld", 
+            reinterpret_cast<void *>(localSrc),
+            reinterpret_cast<void *>(remoteDstShift), length);
+    }
+
     if (!shouldRun) {
         d_err("write request after shouldRun=false is ignored");
         return;

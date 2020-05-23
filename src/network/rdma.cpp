@@ -3,6 +3,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/poll.h>
+#include <rdma/rdma_verbs.h>
 
 #include <config.hpp>
 #include <debug.hpp>
@@ -248,23 +249,22 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
         d_err("wc->status = %d", (int)wc->status);
         exit(-1);
     }
-    if (WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV) {
-        auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
-        if (msg->type == Message::MESG_REMOTE_MR) {
-            memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
-            peer->connected = true;
-            d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
-            
-            ++incomingConns;
-            {
-                std::unique_lock<std::mutex> lock(stopSpinMutex);
-                ssmCondVar.notify_one();
-            }
+
+    auto *msg = reinterpret_cast<Message *>(peer->recvRegion);
+    if (msg->type == Message::MESG_REMOTE_MR) {
+        memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
+        peer->connected = true;
+        d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
+        
+        ++incomingConns;
+        {
+            std::unique_lock<std::mutex> lock(stopSpinMutex);
+            ssmCondVar.notify_one();
         }
-        else {
-            d_err("RDMA recv intended for MR received some other thing");
-            exit(-1);
-        }
+    }
+    else {
+        d_err("RDMA recv intended for MR received some other thing");
+        exit(-1);
     }
 }
 
@@ -416,7 +416,7 @@ void RDMASocket::postSend(int peerId, uint64_t length)
         d_err("send request after shouldRun=false is ignored");
         return;
     }
-
+    /*
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -433,6 +433,9 @@ void RDMASocket::postSend(int peerId, uint64_t length)
     wr.opcode = IBV_WR_SEND_WITH_IMM;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
+    */
+    auto *peer = peers + peerId;
+    rdma_post_send(peer->cmId, nullptr, peer->sendRegion, length, peer->sendMR, 0);
 }
 
 /** Issue a receive request to the designated peer. DOES NOT ALLOCATE HASHTABLE ID. */
@@ -442,7 +445,7 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
         d_err("recv request after shouldRun=false is ignored");
         return;
     }
-
+    /*
     ibv_recv_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -458,25 +461,20 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
     wr.next = nullptr;
 
     expectZero(ibv_post_recv(peers[peerId].qp, &wr, &badWr));
+    */
+    auto *peer = peers + peerId;
+    rdma_post_recv(peer->cmId, nullptr, peer->recvRegion, length, peer->recvMR);
 }
 
 /** Issue a write request to the designated peer, and return a unique task ID. */
 void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSrc,
                            uint64_t length, int imm)
 {
-    static int temp = 0;
-    if (temp < 10) {
-        ++temp;
-        d_info("post write: local addr %p -> remote shift %p, len %lld", 
-            reinterpret_cast<void *>(localSrc),
-            reinterpret_cast<void *>(remoteDstShift), length);
-    }
-
     if (!shouldRun) {
         d_err("write request after shouldRun=false is ignored");
         return;
     }
-
+    /*
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -500,6 +498,11 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     ibv_post_send(peers[peerId].qp, &wr, &badWr);
+    */
+    auto *peer = peers + peerId;
+    auto remoteDst = reinterpret_cast<uint64_t>(peer->peerMR.addr) + remoteDstShift;
+    rdma_post_write(peer->cmId, nullptr, reinterpret_cast<void *>(localSrc), length,
+                    peer->writeMR, 0, remoteDst, peer->peerMR.rkey);
 }
 
 /** Issue a read request from the designated peer, with a designated task ID. */
@@ -509,7 +512,7 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
         d_err("read request after shouldRun=false is ignored");
         return;
     }
-
+    /*
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -528,6 +531,11 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     ibv_post_send(peers[peerId].qp, &wr, &badWr);
+    */
+    auto *peer = peers + peerId;
+    auto remoteSrc = reinterpret_cast<uint64_t>(peer->peerMR.addr) + remoteSrcShift;
+    rdma_post_read(peer->cmId, nullptr, reinterpret_cast<void *>(localDst), length,
+                    peer->readMR, 0, remoteSrc, peer->peerMR.rkey);
 }
 
 /**

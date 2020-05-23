@@ -83,16 +83,29 @@ RDMASocket::RDMASocket()
         d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
     }
 
-    initialized = true;
     writeLog.resize(WRITE_LOG_SIZE);
     d_info("successfully created RDMASocket!");
 
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
-        auto peerNode = (*clusterConf)[i];
-        if (peerNode.id == myNodeConf->id)
+        int peerId = (*clusterConf)[i].id;
+        if (peerId == myNodeConf->id)
             continue;
-        verboseQP(peerNode.id);
+        verboseQP(peerId);
+
+        memset(peers[peerId].writeRegion, 'A', 4096);
+        postWrite(peerId, 0, (uintptr_t)peers[peerId].writeRegion, 4096);
     }
+
+    ibv_wc wc[2];
+    for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
+        int peerId = (*clusterConf)[i].id;
+        postReceive(peerId, 4096);
+        pollRecvCompletion(wc);
+        d_info("tested remote write with peer %d", peerId);
+    }
+    d_info("written char = %d", *(reinterpret_cast<char *>(memConf->getMemory())));
+
+    initialized = true;
 }
 
 RDMASocket::~RDMASocket()
@@ -224,12 +237,6 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
     postSend(peer->peerId, sizeof(Message));
 
     /*
-     * Post another recv to ensure that there is always an outstanding RDMA recv.
-     * Because there is already an RDMA recv, this recv shouldn't receive the remote MR.
-     */
-    postReceive(peer->peerId, sizeof(Message));
-
-    /*
      * If I am already initialized, then this must be an incoming connection from another node.
      * Therefore, I won't race for this MR with RPC listener process.
      */
@@ -254,8 +261,9 @@ void RDMASocket::onConnectionEstablished(rdma_cm_event *event)
     if (msg->type == Message::MESG_REMOTE_MR) {
         memcpy(&peer->peerMR, &msg->data.mr, sizeof(ibv_mr));
         peer->connected = true;
-        d_info("successfully connected with peer: %d (%p)", peer->peerId, (void *)peer->peerMR.addr);
-        
+        d_info("successfully connected with peer: %d (%p, rkey = %u)",
+            peer->peerId, (void *)peer->peerMR.addr, peer->peerMR.rkey);
+
         ++incomingConns;
         {
             std::unique_lock<std::mutex> lock(stopSpinMutex);
@@ -299,11 +307,9 @@ void RDMASocket::buildResources(ibv_context *ctx)
         //expectZero(ibv_req_notify_cq(cq[i], 0));
     }
     
-    int mrFlags = IBV_ACCESS_LOCAL_WRITE |
-                  IBV_ACCESS_REMOTE_READ |
-                  IBV_ACCESS_REMOTE_WRITE |
-                  IBV_ACCESS_REMOTE_ATOMIC;
+    int mrFlags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
     expectNonZero(mr = ibv_reg_mr(pd, memConf->getMemory(), memConf->getCapacity(), mrFlags));
+    d_info("Major MR: len = %lu, rkey = %u", mr->length, mr->rkey);
 }
 
 void RDMASocket::buildConnection(rdma_cm_id *cmId)
@@ -341,7 +347,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     cmId->context = reinterpret_cast<void *>(peers + peerId);
 
     /* Wait for remote MR */
-    postReceive(peerId, sizeof(Message), SP_REMOTE_MR_RECV);
+    postReceive(peerId, RDMA_BUF_SIZE);
 }
 
 void RDMASocket::buildConnParam(rdma_conn_param *param)
@@ -580,10 +586,6 @@ int RDMASocket::pollSendCompletion(ibv_wc *wc, int numEntries)
 
 /**
  * Poll for next CQE in recv CQ (RDMA recv).
- * This function automatically processes and skips CQEs caused by:
- * - write-with-imm's
- * - reconnection requests
- * - recover requests
  */
 int RDMASocket::pollRecvCompletion(ibv_wc *wc)
 {
@@ -622,10 +624,10 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
                 continue;
             }
 #endif
-            if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+            if (initialized && wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
                 /* Transparently processes it, post another recv and retry. */
                 processRecvWriteWithImm(wc);
-                postReceive(peerId, sizeof(Message));
+                postReceive(peerId, RDMA_BUF_SIZE);
                 continue;
             }
             return ret;

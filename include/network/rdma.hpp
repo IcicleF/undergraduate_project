@@ -86,33 +86,31 @@ public:
     inline uint8_t *getRecvRegion(int peerId) { return peers[peerId].recvRegion; }
     inline uint8_t *getWriteRegion(int peerId)
     {
-        //int idx = peers[peerId].writeBitmap.allocBit();
-        //while (idx == -1) {
-        //    std::this_thread::yield();
-        //    idx = peers[peerId].writeBitmap.allocBit();
-        //}
-        return peers[peerId].writeRegion; // + idx * Block4K::capacity;
+        int idx = peers[peerId].writeBitmap.allocBit();
+        while (idx == -1) {
+            std::this_thread::yield();
+            idx = peers[peerId].writeBitmap.allocBit();
+        }
+        return peers[peerId].writeRegion + idx * Block4K::capacity;
     }
     inline uint8_t *getReadRegion(int peerId)
     {
-        //int idx = peers[peerId].readBitmap.allocBit();
-        //while (idx == -1) {
-        //    std::this_thread::yield();
-        //    idx = peers[peerId].readBitmap.allocBit();
-        //}
-        //printf("alloc %d: %d\n", peerId, idx);
-        return peers[peerId].readRegion; // + idx * Block4K::capacity;
+        int idx = peers[peerId].readBitmap.allocBit();
+        while (idx == -1) {
+            std::this_thread::yield();
+            idx = peers[peerId].readBitmap.allocBit();
+        }
+        return peers[peerId].readRegion + idx * Block4K::capacity;
     }
     inline void freeWriteRegion(int peerId, uint8_t *addr)
     {
-        //int idx = (addr - peers[peerId].writeRegion) / Block4K::capacity;
-        //peers[peerId].writeBitmap.freeBit(idx);
+        int idx = (addr - peers[peerId].writeRegion) / Block4K::capacity;
+        peers[peerId].writeBitmap.freeBit(idx);
     }
     inline void freeReadRegion(int peerId, uint8_t *addr)
     {
-        //int idx = (addr - peers[peerId].readRegion) / Block4K::capacity;
-        //printf("free %d: %d\n", peerId, idx);
-        //peers[peerId].readBitmap.freeBit(idx);
+        int idx = (addr - peers[peerId].readRegion) / Block4K::capacity;
+        peers[peerId].readBitmap.freeBit(idx);
     }
 
     int pollSendCompletion(ibv_wc *wc);

@@ -28,7 +28,6 @@ add_executable(DMServer
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
     src/network/netif.cpp
 )
 target_link_libraries(DMServer
@@ -54,7 +53,6 @@ add_executable(FMServer
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
     src/network/netif.cpp
 )
 target_link_libraries(FMServer
@@ -77,7 +75,6 @@ add_executable(LocofsClient
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
     src/network/netif.cpp
 )
 target_link_libraries(LocofsClient

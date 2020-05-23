@@ -606,19 +606,19 @@ int main(int argc, char **argv)
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
     const int N = cmdConf->_N;
-
+/*
     d_info("start roundtrip test...");
     uint64_t tot = 0;
     for (int i = 0; i < N; ++i)
         tot += loco.testRoundTrip(0);
     
     printf("Network roundtrip: %.2lf us\n\n", (double)tot / N);
-
+*/
     srand(time(0));
     const int M = cmdConf->_Size;
     char buf[M];
     for (int i = 0; i < M; ++i)
-        buf[i] = rand() % 64 + 32;
+        buf[i] = 'p';
 
     d_info("start r/w...");
 
@@ -637,6 +637,8 @@ int main(int argc, char **argv)
     printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
     printf("\n");
 
+    loco.testRoundTrip(0);
+   
     boost_cpu_time = 0;
     meta_rpc_time = 0;
 

@@ -1,7 +1,7 @@
 #include <ecal.hpp>
 #include <debug.hpp>
 
-//#define USE_RPC
+#define USE_RPC
 
 /**
  * Constructor initializes `memConf`.

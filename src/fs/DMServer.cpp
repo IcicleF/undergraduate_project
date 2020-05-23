@@ -36,6 +36,10 @@ private:
 void dmHandleTest(erpc::ReqHandle *reqHandle, void *context)
 {
     auto *resp = allocateResponse<PureValueResponse>(reqHandle, context);
+    printf("Memory[0..10] = ");
+    for (int i = 0; i < 10; ++i)
+        printf("%d ", *(reinterpret_cast<char *>(memConf->getMemory()) + i));
+    printf("\n");
     resp->value = 0;
     sendResponse(reqHandle, context);
 }
@@ -122,7 +126,7 @@ int main(int argc, char **argv)
     reqFuncs[static_cast<int>(ErpcType::ERPC_MKDIR)] = dmHandleMkdir;
     reqFuncs[static_cast<int>(ErpcType::ERPC_RMDIR)] = dmHandleRmdir;
     reqFuncs[static_cast<int>(ErpcType::ERPC_READDIR)] = dmHandleReaddir;
-    
+
     netif = new NetworkInterface(reqFuncs);
     ecal.regNetif(netif);
 

@@ -99,8 +99,9 @@ RDMASocket::RDMASocket()
     ibv_wc wc[2];
     for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
         int peerId = (*clusterConf)[i].id;
-        postReceive(peerId, 4096);
-        pollRecvCompletion(wc);
+        if (peerId == myNodeConf->id)
+            continue;
+        pollSendCompletion(wc);
         d_info("tested remote write with peer %d", peerId);
     }
     d_info("written char = %d", *(reinterpret_cast<char *>(memConf->getMemory())));
@@ -321,6 +322,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     qp_init_attr.qp_type = IBV_QPT_RC;
     qp_init_attr.send_cq = cq[CQ_SEND];
     qp_init_attr.recv_cq = cq[CQ_RECV];
+    qp_init_attr.sq_sig_all = 1;
     qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_send_sge = 1;

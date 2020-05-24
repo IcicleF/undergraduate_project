@@ -130,12 +130,6 @@ int main(int argc, char **argv)
     netif = new NetworkInterface(reqFuncs);
     ecal.regNetif(netif);
 
-    printf("DMServer: ECAL constructed & exited ctor.\n");
-    fflush(stdout);
-    
-    printf("DMServer: main thread sleep.\n");
-    fflush(stdout);
-
     netif->startServer();
 
     printf("DMServer: Ctrl-C, stopListenerAndJoin\n");

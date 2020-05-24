@@ -294,6 +294,7 @@ void ECAL::writeBlock(ECAL::Page &page)
 
     DataPosition pos = getDataPos(page.index);
     uint64_t blockShift = getBlockShift(pos.row);
+    ibv_wc wc[2];
     for (int i = 0; i < N; ++i) {
         int peerId = (pos.startNodeId + i) % N;
         uint8_t *blk = (i < K ? data[i] : parity[i - K]);
@@ -303,10 +304,13 @@ void ECAL::writeBlock(ECAL::Page &page)
         else if (rdma->isPeerAlive(peerId)) {
 #ifndef USE_RPC
             uint8_t *base = rdma->getWriteRegion(peerId);
-            //memcpy(base, blk, BlockTy::size);
+            memcpy(base, blk, BlockTy::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
+            d_info("write posted");
+            rdma->pollSendCompletion(wc);
+            d_info("write polled");
             rdma->freeWriteRegion(peerId, base);
-	    writeCount++;
+            writeCount++;
 #else
             MemRequest req;
             PureValueResponse resp;

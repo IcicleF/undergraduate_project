@@ -137,13 +137,7 @@ int main(int argc, char **argv)
 
     netif = new NetworkInterface(reqFuncs);
     ecal.regNetif(netif);
-
-    printf("FMServer: ECAL constructed & exited ctor.\n");
-    fflush(stdout);
     
-    printf("FMServer: main thread sleep.\n");
-    fflush(stdout);
-
     netif->startServer();
 
     printf("FMServer: Ctrl-C, stopListenerAndJoin\n");

@@ -16,7 +16,7 @@
 class LocofsClient
 {
 public:
-    LocofsClient() : netif(std::unordered_map<int, erpc::erpc_req_func_t>()) { }
+    LocofsClient() { rpc = ecal.getRPCInterface(); }
     ~LocofsClient() = default;
 
     bool mount(const std::string &conf);
@@ -60,6 +60,12 @@ private:
     lru_cache<std::string, uint64_t> UCache;
 
     ECAL ecal;
-    NetworkInterface netif;
+    RPCInterface *rpc;
+
+    template <typename ReqTy, typename RespTy>
+    void rpcCall_t(int peerId, RpcType type, const ReqTy &req, RespTy &resp)
+    {
+        rpc->rpcCall(peerId, type, &req, sizeof(ReqTy), &resp, sizeof(RespTy));
+    }
 };
 #endif  // LocoFS_LocofsClient_H

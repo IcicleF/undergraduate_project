@@ -8,16 +8,27 @@
 #if !defined(RPC_HPP)
 #define RPC_HPP
 
-#include <boost/lockfree/spsc_queue.hpp>
 #include "rdma.hpp"
 
-/** Buffers an incoming RPC request/response. */
-struct ReqBuf
+enum class RpcType
 {
-    ibv_wc wc;
-    Message msg;
-    explicit ReqBuf() = default;
-    ReqBuf(const ibv_wc &wc, Message *msg) : wc(wc), msg(*msg) { }
+    RPC_REQUEST = 64,
+    RPC_TEST,
+    RPC_MEMREAD,
+    RPC_MEMWRITE,
+    RPC_OPEN,
+    RPC_ACCESS,
+    RPC_CREATE,
+    RPC_CSIZE,
+    RPC_READ,
+    RPC_WRITE,
+    RPC_REMOVE,
+    RPC_FILESTAT,
+    RPC_DIRSTAT,
+    RPC_MKDIR,
+    RPC_RMDIR,
+    RPC_READDIR,
+    RPC_RESPONSE = 128
 };
 
 /**
@@ -26,6 +37,9 @@ struct ReqBuf
  */
 class RPCInterface
 {
+private:
+    void (*rpcProcessor)(RpcType reqType, const void *request, void *response, int *respSize);
+
 public:
     explicit RPCInterface();
     ~RPCInterface();
@@ -35,39 +49,21 @@ public:
     inline void __cancelMarking(int peerId) { peerAliveStatus[peerId] = 0; }
 
     bool isPeerAlive(int peerId);
-    void stopListenerAndJoin();
-    void syncAmongPeers();
 
-    inline void remoteReadFrom(int peerId, uint64_t remoteSrcShift, uint64_t localDst, uint64_t length, uint32_t taskId = 0)
-    {
-        socket->postRead(peerId, remoteSrcShift, localDst, length, taskId);
-    }
-    inline void remoteWriteTo(int peerId, uint64_t remoteDstShift, uint64_t localSrc, uint64_t length, int imm = -1)
-    {
-        socket->postWrite(peerId, remoteDstShift, localSrc, length, imm);
-    }
-    
-    void registerRPCProcessor(void (*rpcProc)(const RPCMessage *, RPCMessage *));
-    void rpcCall(int peerId, const Message *request, Message *response);
+    void registerRPCProcessor(decltype(rpcProcessor) rpcProc) { rpcProcessor = rpcProc; }
+    void rpcCall(int peerId, RpcType reqType, const void *request, size_t reqSize,
+                 void *response, size_t respSize);
+    void rpcListen(int rounds = 1000000);
+    void server() { while (shouldRun) rpcListen(); }
 
-    inline RDMASocket *getRDMASocket() const { return socket; }
+    inline RDMASocket *getRDMASocket() const { return rdma; }
+    inline void stop() { shouldRun = false; }
 
 private:
-    using Queue = boost::lockfree::spsc_queue<ReqBuf, boost::lockfree::capacity<65536>>;
-
-    void rdmaListen();
-    void rpcListen();
-
-    RDMASocket *socket = nullptr;
-    std::thread rdmaListener;           /* Poll filtered recvs and distribute them */
-    std::thread rpcListener;            /* Poll distributed CQEs */
-    void (*rpcProcessor)(const RPCMessage *request, RPCMessage *response) = nullptr;
+    RDMASocket *rdma = nullptr;
 
     short peerAliveStatus[MAX_NODES];
-    std::atomic<bool> shouldRun;
-    Queue sq;                           /* Responses of sent (outbound) RPCs */
-    Queue rq;                           /* Received (inbound) RPC requests */
-    Queue oq;                           /* Other types of message */
+    bool shouldRun;
 };
 
 #endif // RPC_HPP

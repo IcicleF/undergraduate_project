@@ -33,7 +33,8 @@ ECAL::ECAL()
     }
 
     allocTable = new BlockPool<BlockTy>();
-    rdma = new RDMASocket();
+    rpc = new RPCInterface();
+    rdma = rpc->getRDMASocket();
 
     if (clusterConf->getClusterSize() % N != 0) {
         d_err("FIXME: clusterSize %% N != 0, exit");

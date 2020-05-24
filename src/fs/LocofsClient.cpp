@@ -42,7 +42,6 @@ bool LocofsClient::mount(const std::string &conf)
 {
     parseConfig();
     UCache.init(5000);
-    ecal.regNetif(&netif);
     return true;
 }
 
@@ -140,7 +139,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CSIZE, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_CSIZE, request, response);
     edt = steady_clock::now();
     meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
@@ -227,7 +226,7 @@ bool LocofsClient::mkdir(const std::string &path, int32_t mode)
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(directory_trans, ErpcType::ERPC_MKDIR, request, response);
+    rpcCall_t(directory_trans, RpcType::RPC_MKDIR, request, response);
     return (response.value == 0);
 }
 
@@ -258,13 +257,13 @@ bool LocofsClient::open(const std::string &path, int32_t flags)
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_ACCESS, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_ACCESS, request, response);
     
     if (response.value == 0)
         return true;
     
     request.value = 0777;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CREATE, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_CREATE, request, response);
     return response.value == 0;
 }
 
@@ -282,7 +281,7 @@ bool LocofsClient::rmdir(const std::string &path)
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(directory_trans, ErpcType::ERPC_RMDIR, request, response);
+    rpcCall_t(directory_trans, RpcType::RPC_RMDIR, request, response);
 
     if (response.value == 0) {
         UCache.remove(p);
@@ -303,7 +302,7 @@ bool LocofsClient::unlink(const std::string &path)
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_REMOVE, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_REMOVE, request, response);
     return (response.value == 0);
 }
 
@@ -322,7 +321,7 @@ bool LocofsClient::stat(const std::string &path, struct stat &buf)
         request.path[MAX_PATH_LEN] = 0;
     }
     StatResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_FILESTAT, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_FILESTAT, request, response);
 
     if (response.result < 0)
         return false;
@@ -345,7 +344,7 @@ bool LocofsClient::statdir(const std::string &path, struct stat &buf)
         request.path[MAX_PATH_LEN] = 0;
     }
     StatResponse response;
-    netif.rpcCall(directory_trans, ErpcType::ERPC_DIRSTAT, request, response);
+    rpcCall_t(directory_trans, RpcType::RPC_DIRSTAT, request, response);
 
     if (response.result < 0)
         return false;
@@ -370,7 +369,7 @@ bool LocofsClient::readdir(const std::string &path, std::vector<std::string> &bu
         request.path[MAX_PATH_LEN] = 0;
     }
     RawResponse response;
-    netif.rpcCall(directory_trans, ErpcType::ERPC_READDIR, request, response);
+    rpcCall_t(directory_trans, RpcType::RPC_READDIR, request, response);
 
     std::string vbuf(response.raw, response.len);
     boost::split(buf, vbuf, boost::is_any_of("\t"), boost::token_compress_on);
@@ -391,7 +390,7 @@ bool LocofsClient::readdir(const std::string &path, std::vector<std::string> &bu
     for (int i = 0; i < file_trans.size(); i++) {
         std::vector<std::string> temp;
 
-        netif.rpcCall(file_trans[i], ErpcType::ERPC_READDIR, req2, response);
+        rpcCall_t(file_trans[i], RpcType::RPC_READDIR, req2, response);
         vbuf = std::string(response.raw, response.len);
         boost::split(temp, vbuf, boost::is_any_of("\t"), boost::token_compress_on);
 
@@ -416,7 +415,7 @@ bool LocofsClient::create(const std::string &path, int32_t mode)
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CREATE, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_CREATE, request, response);
     return (response.value == 0);
 }
 
@@ -464,7 +463,7 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
         request.path[MAX_PATH_LEN] = 0;
     }
     StatResponse response;
-    netif.rpcCall(directory_trans, ErpcType::ERPC_DIRSTAT, request, response);
+    rpcCall_t(directory_trans, RpcType::RPC_DIRSTAT, request, response);
 
     if (response.result < 0)
         return false;
@@ -514,7 +513,7 @@ bool LocofsClient::_get_file_stat(const std::string &path, loco_file_stat &loco_
         request.path[MAX_PATH_LEN] = 0;
     }
     StatResponse response;
-    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_FILESTAT, request, response);
+    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_FILESTAT, request, response);
     auto edt = std::chrono::steady_clock::now();
     meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
@@ -572,7 +571,7 @@ uint64_t LocofsClient::testRoundTrip(int peerId)
 
     PureValueRequest request;
     PureValueResponse response;
-    netif.rpcCall(peerId, ErpcType::ERPC_TEST, request, response);
+    rpcCall_t(peerId, RpcType::RPC_TEST, request, response);
 
     auto edt = std::chrono::steady_clock::now();
     return std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
@@ -586,7 +585,6 @@ DEFINE_MAIN_INFO();
 
 int main(int argc, char **argv)
 {
-#if 1
     using namespace std;
     using namespace std::chrono;
 
@@ -668,15 +666,6 @@ int main(int argc, char **argv)
     printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
     loco.stop();
-#else
-    cmdConf = new CmdLineConfig;
-    memConf = new MemoryConfig(*cmdConf);
-    clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
-    auto myself = clusterConf->findMyself();
-    myNodeConf = new NodeConfig(myself);
-    
-    NetworkInterface netif;
-#endif
 
     return 0;
 }

@@ -60,17 +60,17 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     using std::chrono::microseconds;
 
     //auto stt = steady_clock::now();
-   // auto edt = steady_clock::now();
+    //auto edt = steady_clock::now();
 
     //printf("entry "); fflush(stdout);
 
-    auto stt = steady_clock::now();
+    //auto stt = steady_clock::now();
     struct loco_file_stat loco_st;
     if (_get_file_stat(path, loco_st) == false) {
         return false;
     }
-    auto edt = steady_clock::now();
-    meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
+    //auto edt = steady_clock::now();
+    //meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
 
     //d_info("_get_file_stat succ");
     //printf("_g "); fflush(stdout);
@@ -83,7 +83,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     int64_t start = 0;
 
     ECAL::Page page;
-    stt = steady_clock::now();
+    //stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
@@ -107,8 +107,8 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         len -= block_len;
         offset += block_len;
     }
-    edt = steady_clock::now();
-    data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
+    //edt = steady_clock::now();
+    //data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
 
     //d_info("EC & RDMA succ");
 
@@ -116,11 +116,11 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *  Get Key_FileInode
      */
     std::string Key_File;
-    stt = steady_clock::now();
+    //stt = steady_clock::now();
     if (_get_file_key(path, Key_File) == false)
         return false;
-    edt = steady_clock::now();
-    meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
+    //edt = steady_clock::now();
+    //meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
     
     //d_info("_get_file_key succ");
 
@@ -131,7 +131,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     _set_ContentInode(loco_st, fci);
     fci.size = fci.size > (off + len) ? fci.size : (off + len);
     
-    stt = steady_clock::now();
+    //stt = steady_clock::now();
     ValueWithPathRequest request;
     {
         request.value = fci.size;
@@ -139,9 +139,9 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         request.path[MAX_PATH_LEN] = 0;
     }
     PureValueResponse response;
-    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_CSIZE, request, response);
-    edt = steady_clock::now();
-    meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_CSIZE, request, response);
+    //edt = steady_clock::now();
+    //meta_upd_time_w += duration_cast<microseconds>(edt - stt).count();
 
     //d_info("csize rpc succ");
 
@@ -158,8 +158,8 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     using std::chrono::duration_cast;
     using std::chrono::microseconds;
 
-    auto stt = steady_clock::now();
-    auto edt = steady_clock::now();
+    //auto stt = steady_clock::now();
+    //auto edt = steady_clock::now();
 
     //auto stt = steady_clock::now();
     struct loco_file_stat loco_st;
@@ -182,7 +182,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     }
 
     ECAL::Page page;
-    stt = steady_clock::now();
+    //stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
@@ -197,18 +197,18 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
         len -= block_len;
         offset += block_len;
     }
-    edt = steady_clock::now();
-    data_rdma_time_r += duration_cast<microseconds>(edt - stt).count();
+    //edt = steady_clock::now();
+    //data_rdma_time_r += duration_cast<microseconds>(edt - stt).count();
 
     /**
      *  Get Key_FileInode
      */
     std::string Key_File;
-    stt = steady_clock::now();
+    //stt = steady_clock::now();
     if (_get_file_key(path, Key_File) == false)
         return false;
-    edt = steady_clock::now();
-    meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
+    //edt = steady_clock::now();
+    //meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
     
     return start;
 }
@@ -475,28 +475,28 @@ bool LocofsClient::_get_uuid(const std::string &path, uint64_t &uuid, const bool
 
 bool LocofsClient::_get_file_key(const std::string &path, std::string &Key_File)
 {
-    auto stt = std::chrono::steady_clock::now();
+    //auto stt = std::chrono::steady_clock::now();
     boost::filesystem::path tmp(path);
     boost::filesystem::path parent = tmp.parent_path();
     boost::filesystem::path filename = tmp.filename();
-    auto edt = std::chrono::steady_clock::now();
-    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //auto edt = std::chrono::steady_clock::now();
+    //boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     std::vector<std::string> vkey;
 
-    stt = std::chrono::steady_clock::now();
+    //stt = std::chrono::steady_clock::now();
     uint64_t uuid;
     if (_get_uuid(parent.string(), uuid, true) == false)
         return false;
-    edt = std::chrono::steady_clock::now();
-    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //edt = std::chrono::steady_clock::now();
+    //meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
-    stt = std::chrono::steady_clock::now();
+    //stt = std::chrono::steady_clock::now();
     vkey.push_back(std::to_string(uuid));
     vkey.push_back(filename.string());
     Key_File = boost::join(vkey, ":");
-    edt = std::chrono::steady_clock::now();
-    boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    //edt = std::chrono::steady_clock::now();
+    //boost_cpu_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     return true;
 }
@@ -506,16 +506,16 @@ bool LocofsClient::_get_file_stat(const std::string &path, loco_file_stat &loco_
     std::string Key_File;
     _get_file_key(path, Key_File);
 
-    auto stt = std::chrono::steady_clock::now();
+    //auto stt = std::chrono::steady_clock::now();
     ValueWithPathRequest request;
     {
         strncpy(request.path, Key_File.c_str(), MAX_PATH_LEN);
         request.path[MAX_PATH_LEN] = 0;
     }
     StatResponse response;
-    rpcCall_t(SERVER(file_trans, Key_File), RpcType::RPC_FILESTAT, request, response);
-    auto edt = std::chrono::steady_clock::now();
-    meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
+    netif.rpcCall(SERVER(file_trans, Key_File), ErpcType::ERPC_FILESTAT, request, response);
+    //auto edt = std::chrono::steady_clock::now();
+    //meta_rpc_time += std::chrono::duration_cast<std::chrono::microseconds>(edt - stt).count();
 
     memcpy(&loco_st, &response.fileStat, sizeof(loco_file_stat));
     return (response.result == 0);
@@ -627,13 +627,13 @@ int main(int argc, char **argv)
     auto end = steady_clock::now();
     auto timespan = duration_cast<microseconds>(end - start).count();
 
-    //printf("OK\n");
-    printf("Write %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
-    printf("Breakdown:\n");
-    printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
-    printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
-    printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
     printf("\n");
+    printf("Write %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
+    //printf("Breakdown:\n");
+    //printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
+    //printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
+    //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
+    //printf("\n");
 
     loco.testRoundTrip(0);
    
@@ -658,12 +658,12 @@ int main(int argc, char **argv)
     end = steady_clock::now();
     timespan = duration_cast<microseconds>(end - start).count();
 
-    printf("Read %dKB: %.2lf us\n", M / 1024, (double)timespan / N);
-    printf("Breakdown:\n");
-    printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
-    printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
-    printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
-    printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
+    printf("Read %dKB: %.2lf us\n\n", M / 1024, (double)timespan / N);
+    //printf("Breakdown:\n");
+    //printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
+    //printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
+    //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
+    //printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
     loco.stop();
 

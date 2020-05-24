@@ -221,8 +221,8 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
     }
 
-    //ibv_wc wc[MAX_NODES];
-    //rdma->pollSendCompletion(wc, taskCnt);
+    ibv_wc wc[MAX_NODES];
+    rdma->pollSendCompletion(wc, taskCnt);
 #else
     static MemResponse resps[N];
     int respId = 0;
@@ -307,9 +307,7 @@ void ECAL::writeBlock(ECAL::Page &page)
             uint8_t *base = rdma->getWriteRegion(peerId);
             memcpy(base, blk, BlockTy::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
-            d_info("write posted");
             rdma->pollSendCompletion(wc);
-            d_info("write polled");
             rdma->freeWriteRegion(peerId, base);
             writeCount++;
 #else

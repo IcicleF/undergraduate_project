@@ -586,16 +586,24 @@ DEFINE_MAIN_INFO();
 
 void thptWorker(LocofsClient *cli, bool wl, int n = 100000)
 {
+    using namespace std::chrono;
+
     std::string path = "/test/0001";
-    char buf[4097];
-    memset(buf, 'a', 4096);
+    ECAL::Page page(0);
+    memset(page.page.data, 'a', 4096);
+
+    ECAL *ecal = cli->getECAL();
     if (wl)
         for (int i = 0; i < n; ++i) {
-            cli->write(path, buf, 4096, 4096);
+            auto stt = steady_clock::now();
+            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 25);
+            ecal->writeBlock(page);
         }
     else
         for (int i = 0; i < n; ++i) {
-            cli->read(path, buf, 4096, 4096);
+            auto stt = steady_clock::now();
+            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 10);
+            ecal->readBlock(0, page);
         }
 }
 
@@ -680,13 +688,10 @@ int main(int argc, char **argv)
     std::thread ths[16];
 
     start = steady_clock::now();
-
     for (int i = 1; i <= thnum; ++i)
         ths[i] = std::thread(thptWorker, &loco, true, 100000);
-    
     for (int i = 1; i <= thnum; ++i)
         ths[i].join();
-
     end = steady_clock::now();
     timespan = duration_cast<milliseconds>(end - start).count();
 

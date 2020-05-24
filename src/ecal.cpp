@@ -206,22 +206,18 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
     int taskCnt = 0;
+    ibv_wc wc[2];
     for (int i = 0; i < K; ++i) {
         int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id) {
             uint8_t *base = rdma->getReadRegion(peerId);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
-            if (errno) d_warn("boom! at (read %d) (write %d)", readCount, writeCount);
-            readCount++;
-            recoverSrc[i] = base;
-            ++taskCnt;
+            rdma->pollSendCompletion(wc);
+	    recoverSrc[i] = base;
         }
         else
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
     }
-
-    ibv_wc wc[MAX_NODES];
-    rdma->pollSendCompletion(wc, taskCnt);
 #else
     static MemResponse resps[N];
     int respId = 0;

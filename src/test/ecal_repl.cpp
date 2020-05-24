@@ -57,10 +57,8 @@ ECAL::~ECAL()
 
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
-    static int peerId = 0;
-    
+    int peerId = 0;
     page.index = index;
-    peerId = (peerId + 1) % clusterConf->getClusterSize();      // simulate random hit on self
 
     if (peerId == myNodeConf->id) {
         memcpy(page.page.data, allocTable->at(index * K), Block4K::size);
@@ -71,7 +69,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     uint64_t blockShift = getBlockShift(index * K);
     uint8_t *base = rdma->getReadRegion(peerId);
     rdma->postRead(peerId, blockShift, (uint64_t)base, Block4K::size);
-    //rdma->pollSendCompletion(wc);
+    rdma->pollSendCompletion(wc);
 
     memcpy(page.page.data, base, Block4K::size);
     rdma->freeReadRegion(peerId, base);
@@ -80,6 +78,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 void ECAL::writeBlock(ECAL::Page &page)
 {
     uint64_t blockShift = getBlockShift(page.index * K);
+    ibv_wc wc[2];
     for (int i = 0; i < N; ++i) {
         int peerId = (*clusterConf)[i].id;
         
@@ -87,8 +86,9 @@ void ECAL::writeBlock(ECAL::Page &page)
             memcpy(allocTable->at(page.index * K), page.page.data, BlockTy::size);
         else if (rdma->isPeerAlive(peerId)) {
             uint8_t *base = rdma->getWriteRegion(peerId);
-            //memcpy(base, page.page.data, Block4K::size);
+            memcpy(base, page.page.data, Block4K::size);
             rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
+            rdma->pollSendCompletion(wc);
             rdma->freeWriteRegion(peerId, base);
         }
     }

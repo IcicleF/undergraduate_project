@@ -596,14 +596,14 @@ void thptWorker(LocofsClient *cli, bool wl, int n = 100000)
     if (wl)
         for (int i = 0; i < n; ++i) {
             auto stt = steady_clock::now();
-            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 25);
+            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 10);
             ecal->writeBlock(page);
         }
     else
         for (int i = 0; i < n; ++i) {
             auto stt = steady_clock::now();
-            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 10);
-            ecal->readBlock(0, page);
+            while (duration_cast<microseconds>(steady_clock::now() - stt).count() < 5);
+            ecal->readBlock(1, page);
         }
 }
 
@@ -685,19 +685,20 @@ int main(int argc, char **argv)
 
 
     const int thnum = cmdConf->_Thread;
-    std::thread ths[16];
+    if (thnum) {
+        std::thread ths[16];
 
-    start = steady_clock::now();
-    for (int i = 1; i <= thnum; ++i)
-        ths[i] = std::thread(thptWorker, &loco, true, 100000);
-    for (int i = 1; i <= thnum; ++i)
-        ths[i].join();
-    end = steady_clock::now();
-    timespan = duration_cast<milliseconds>(end - start).count();
+        start = steady_clock::now();
+        for (int i = 1; i <= thnum; ++i)
+            ths[i] = std::thread(thptWorker, &loco, false, 100000);
+        for (int i = 1; i <= thnum; ++i)
+            ths[i].join();
+        end = steady_clock::now();
+        timespan = duration_cast<milliseconds>(end - start).count();
 
-    double thpt = 100000 * 1.0 * thnum / timespan * 1000;
-    printf("%d thread(s): %.1lf\n\n", thnum, thpt);
-
+        double thpt = 100000 * 1.0 * thnum / timespan * 1000;
+        printf("%d thread(s): %.1lf\n\n", thnum, thpt);
+    }
     loco.stop();
 #else
     cmdConf = new CmdLineConfig;

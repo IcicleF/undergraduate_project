@@ -100,6 +100,7 @@ public:
             std::this_thread::yield();
             idx = peers[peerId].readBitmap.allocBit();
         }
+        d_info("allocated %d", idx);
         return peers[peerId].readRegion + idx * Block4K::capacity;
     }
     inline void freeWriteRegion(int peerId, uint8_t *addr)

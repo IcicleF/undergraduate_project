@@ -83,11 +83,11 @@ void ECAL::writeBlock(ECAL::Page &page)
         int peerId = (*clusterConf)[i].id;
         
         if (peerId == myNodeConf->id)
-            memcpy(allocTable->at(page.index * K), page.page.data, BlockTy::size);
+            memcpy(allocTable->at(page.index * K), page.page.data, Block4K::size);
         else if (rdma->isPeerAlive(peerId)) {
             uint8_t *base = rdma->getWriteRegion(peerId);
             memcpy(base, page.page.data, Block4K::size);
-            rdma->postWrite(peerId, blockShift, (uint64_t)base, BlockTy::size);
+            rdma->postWrite(peerId, blockShift, (uint64_t)base, Block4K::size);
             rdma->pollSendCompletion(wc);
             rdma->freeWriteRegion(peerId, base);
         }

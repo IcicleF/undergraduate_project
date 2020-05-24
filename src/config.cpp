@@ -6,7 +6,6 @@
 
 #include <config.hpp>
 #include <debug.hpp>
-#include <network/message.hpp>
 
 using namespace std;
 

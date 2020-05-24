@@ -39,10 +39,7 @@ RDMASocket::RDMASocket()
     expectNonZero(ec = rdma_create_event_channel());
     /* Make event channel non-blocking */
     int flags = fcntl(ec->fd, F_GETFL);
-    if (fcntl(ec->fd, F_SETFL, flags | O_NONBLOCK) < 0)
-        d_err("cannot change EC fd to non-blocking");
-    else
-        d_info("successfully changed EC fd to non-blocking");
+    fcntl(ec->fd, F_SETFL, flags | O_NONBLOCK);
 
     expectZero(rdma_create_id(ec, &listener, nullptr, RDMA_PS_TCP));
     expectZero(rdma_bind_addr(listener, reinterpret_cast<sockaddr *>(&addr)));
@@ -80,7 +77,7 @@ RDMASocket::RDMASocket()
     //ssmCondVar.wait(lock, [&, this](){ return this->incomingConns > expectedConns; });
     while (incomingConns < expectedConns) {
         ssmCondVar.wait(lock);
-        d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
+        //d_info("ctor waken up, connections %d/%d", incomingConns, expectedConns);
     }
 
     writeLog.resize(WRITE_LOG_SIZE);
@@ -91,20 +88,7 @@ RDMASocket::RDMASocket()
         if (peerId == myNodeConf->id)
             continue;
         verboseQP(peerId);
-
-        memset(peers[peerId].writeRegion, 'A', 4096);
-        postWrite(peerId, 0, (uintptr_t)peers[peerId].writeRegion, 4096);
     }
-
-    ibv_wc wc[2];
-    for (int i = 0; i < clusterConf->getClusterSize(); ++i) {
-        int peerId = (*clusterConf)[i].id;
-        if (peerId == myNodeConf->id)
-            continue;
-        pollSendCompletion(wc);
-        d_info("tested remote write with peer %d", peerId);
-    }
-    d_info("written char = %d", *(reinterpret_cast<char *>(memConf->getMemory())));
 
     initialized = true;
 }
@@ -322,7 +306,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     qp_init_attr.qp_type = IBV_QPT_RC;
     qp_init_attr.send_cq = cq[CQ_SEND];
     qp_init_attr.recv_cq = cq[CQ_RECV];
-    qp_init_attr.sq_sig_all = 1;
+    qp_init_attr.sq_sig_all = 0;
     qp_init_attr.cap.max_send_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_recv_wr = MAX_QP_DEPTH;
     qp_init_attr.cap.max_send_sge = 1;
@@ -424,7 +408,7 @@ void RDMASocket::postSend(int peerId, uint64_t length)
         d_err("send request after shouldRun=false is ignored");
         return;
     }
-    /*
+    
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -441,9 +425,6 @@ void RDMASocket::postSend(int peerId, uint64_t length)
     wr.opcode = IBV_WR_SEND_WITH_IMM;
 
     expectZero(ibv_post_send(peers[peerId].qp, &wr, &badWr));
-    */
-    auto *peer = peers + peerId;
-    rdma_post_send(peer->cmId, nullptr, peer->sendRegion, length, peer->sendMR, 0);
 }
 
 /** Issue a receive request to the designated peer. DOES NOT ALLOCATE HASHTABLE ID. */
@@ -453,7 +434,7 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
         d_err("recv request after shouldRun=false is ignored");
         return;
     }
-    /*
+    
     ibv_recv_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -469,9 +450,6 @@ void RDMASocket::postReceive(int peerId, uint64_t length, int specialTaskId)
     wr.next = nullptr;
 
     expectZero(ibv_post_recv(peers[peerId].qp, &wr, &badWr));
-    */
-    auto *peer = peers + peerId;
-    rdma_post_recv(peer->cmId, nullptr, peer->recvRegion, length, peer->recvMR);
 }
 
 /** Issue a write request to the designated peer, and return a unique task ID. */
@@ -482,7 +460,7 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
         d_err("write request after shouldRun=false is ignored");
         return;
     }
-    /*
+    
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -506,11 +484,6 @@ void RDMASocket::postWrite(int peerId, uint64_t remoteDstShift, uint64_t localSr
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     ibv_post_send(peers[peerId].qp, &wr, &badWr);
-    */
-    auto *peer = peers + peerId;
-    auto remoteDst = reinterpret_cast<uint64_t>(peer->peerMR.addr) + remoteDstShift;
-    rdma_post_write(peer->cmId, nullptr, reinterpret_cast<void *>(localSrc), length,
-                    peer->writeMR, 0, remoteDst, peer->peerMR.rkey);
 }
 
 /** Issue a read request from the designated peer, with a designated task ID. */
@@ -520,7 +493,7 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
         d_err("read request after shouldRun=false is ignored");
         return;
     }
-    /*
+    
     ibv_send_wr wr, *badWr = nullptr;
     ibv_sge sge;
 
@@ -539,11 +512,6 @@ void RDMASocket::postRead(int peerId, uint64_t remoteSrcShift, uint64_t localDst
     wr.wr.rdma.rkey = peers[peerId].peerMR.rkey;
 
     ibv_post_send(peers[peerId].qp, &wr, &badWr);
-    */
-    auto *peer = peers + peerId;
-    auto remoteSrc = reinterpret_cast<uint64_t>(peer->peerMR.addr) + remoteSrcShift;
-    rdma_post_read(peer->cmId, nullptr, reinterpret_cast<void *>(localDst), length,
-                    peer->readMR, 0, remoteSrc, peer->peerMR.rkey);
 }
 
 /**
@@ -595,8 +563,8 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
         int ret = ibv_poll_cq(cq[CQ_RECV], 1, wc);
         if (ret) {
             int peerId = WRID_PEER(wc->wr_id);
+#if 0
             auto *peer = peers + peerId;
-#if 0   
             auto *msg = reinterpret_cast<Message *>(peer->recvRegion); 
             if (Unlikely(initialized && WRID_TASK(wc->wr_id) == SP_REMOTE_MR_RECV)) {
                 /* Remote MR from a reconnected peer received. No need to repost recv. */
@@ -625,17 +593,30 @@ int RDMASocket::pollRecvCompletion(ibv_wc *wc)
                 postReceive(peerId, sizeof(Message));
                 continue;
             }
-#endif
-            if (initialized && wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+            if (wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
                 /* Transparently processes it, post another recv and retry. */
                 processRecvWriteWithImm(wc);
                 postReceive(peerId, RDMA_BUF_SIZE);
                 continue;
             }
+#endif
+            if (ret > 0)
+                postReceive(peerId, RDMA_BUF_SIZE);
             return ret;
         }
     }
     return 0;
+}
+
+/**
+ * Try to poll for next CQE in recv CQ (RDMA recv).
+ */
+int RDMASocket::tryPollRecvCompletion(ibv_wc *wc)
+{
+    int ret = ibv_poll_cq(cq[CQ_RECV], 1, wc);
+    if (ret)
+        postReceive(WRID_PEER(wc->wr_id), RDMA_BUF_SIZE);
+    return ret;
 }
 
 /** Process RDMA write-with-imm's to this node */

@@ -28,4 +28,9 @@ union GeneralResponse
     RawResponse rawResp;
 };
 
+#define PREPARE_RPC(reqName, reqType, reqBuf, respName, respType, respBuf, respSize)    \
+    auto *reqName = reinterpret_cast<const reqType *>(reqBuf);                          \
+    auto *respName = reinterpret_cast<respType *>(respBuf);                             \
+    *respSize = sizeof(respType);
+
 #endif // MSG_HPP

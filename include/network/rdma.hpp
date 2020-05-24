@@ -116,7 +116,6 @@ public:
     int pollSendCompletion(ibv_wc *wc);
     int pollSendCompletion(ibv_wc *wc, int numEntries);
     int pollRecvCompletion(ibv_wc *wc);
-    int tryPollRecvCompletion(ibv_wc *wc);
     inline ibv_mr *allocMR(void *addr, size_t length, int acc) { return ibv_reg_mr(pd, addr, length, acc); }
 
 private:

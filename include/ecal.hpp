@@ -13,7 +13,7 @@
 #include "config.hpp"
 #include "datablock.hpp"
 #include "network/rdma.hpp"
-#include "network/rpc.hpp"
+#include "network/netif.hpp"
 
 class ECAL
 {
@@ -40,10 +40,11 @@ public:
     void writeBlock(Page &page);
 
     inline RDMASocket *getRDMASocket() const { return rdma; }
-    inline RPCInterface *getRPCInterface() const { return rpc; }
 
     /* Returns the cluster's capacity in 4kB blocks */
     inline uint64_t getClusterCapacity() const { return capacity; }
+
+    inline void regNetif(NetworkInterface *netif) { this->netif = netif; }
 
 private:
     struct DataPosition
@@ -56,6 +57,7 @@ private:
     };
 
     BlockPool<BlockTy> *allocTable = nullptr;
+    RDMASocket *rdma = nullptr;
     uint64_t capacity = 0;
 
     uint8_t encodeMatrix[N * K];
@@ -73,8 +75,7 @@ private:
         return allocTable->getShift(index);
     }
 
-    RDMASocket *rdma = nullptr;
-    RPCInterface *rpc = nullptr;
+    NetworkInterface *netif;
 };
 
 #endif // ECAL_HPP

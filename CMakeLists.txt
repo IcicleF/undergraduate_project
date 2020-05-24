@@ -28,7 +28,7 @@ add_executable(DMServer
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
+    src/network/netif.cpp
 )
 target_link_libraries(DMServer
     pthread
@@ -40,7 +40,7 @@ target_link_libraries(DMServer
     boost_filesystem
     boost_serialization
     kyotocabinet
-    # erpc
+    erpc
     numa
     dl
 )
@@ -53,7 +53,7 @@ add_executable(FMServer
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
+    src/network/netif.cpp
 )
 target_link_libraries(FMServer
     pthread
@@ -65,7 +65,7 @@ target_link_libraries(FMServer
     boost_filesystem
     boost_serialization
     kyotocabinet
-    # erpc
+    erpc
     numa
     dl
 )
@@ -75,7 +75,7 @@ add_executable(LocofsClient
     src/ecal.cpp
     src/config.cpp
     src/network/rdma.cpp
-    src/network/rpc.cpp
+    src/network/netif.cpp
 )
 target_link_libraries(LocofsClient
     pthread
@@ -87,7 +87,7 @@ target_link_libraries(LocofsClient
     boost_filesystem
     boost_serialization
     kyotocabinet
-    # erpc
+    erpc
     numa
     dl
 )

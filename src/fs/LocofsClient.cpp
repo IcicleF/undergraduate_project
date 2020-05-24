@@ -584,6 +584,21 @@ uint64_t LocofsClient::testRoundTrip(int peerId)
 
 DEFINE_MAIN_INFO();
 
+void thptWorker(LocofsClient *cli, bool wl, int n = 100000)
+{
+    std::string path = "/test/0001";
+    char buf[4097];
+    memset(buf, 'a', 4096);
+    if (wl)
+        for (int i = 0; i < n; ++i) {
+            cli->write(path, buf, 4096, 4096);
+        }
+    else
+        for (int i = 0; i < n; ++i) {
+            cli->read(path, buf, 4096, 4096);
+        }
+}
+
 int main(int argc, char **argv)
 {
 #if 1
@@ -606,14 +621,7 @@ int main(int argc, char **argv)
     expectTrue(loco.open(filename, O_RDWR | O_CREAT));
 
     const int N = cmdConf->_N;
-/*
-    d_info("start roundtrip test...");
-    uint64_t tot = 0;
-    for (int i = 0; i < N; ++i)
-        tot += loco.testRoundTrip(0);
-    
-    printf("Network roundtrip: %.2lf us\n\n", (double)tot / N);
-*/
+
     srand(time(0));
     const int M = cmdConf->_Size;
     char buf[M];
@@ -666,6 +674,24 @@ int main(int argc, char **argv)
     //printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
     //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
     //printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
+
+
+    const int thnum = cmdConf->_Thread;
+    std::thread ths[16];
+
+    start = steady_clock::now();
+
+    for (int i = 1; i <= thnum; ++i)
+        ths[i] = std::thread(thptWorker, &loco, true, 100000);
+    
+    for (int i = 1; i <= thnum; ++i)
+        ths[i].join();
+
+    end = steady_clock::now();
+    timespan = duration_cast<milliseconds>(end - start).count();
+
+    double thpt = 100000 * 1.0 * thnum / timespan * 1000;
+    printf("%d thread(s): %.1lf\n\n", thnum, thpt);
 
     loco.stop();
 #else

@@ -56,6 +56,13 @@ CmdLineConfig::CmdLineConfig()
     else
         _Size = 4096;
 
+    if ((env = getenv("TH")))
+        _Thread = std::stoi(std::string(env));
+    else
+        _Thread = 1;
+    if (_Thread > 16)
+        _Thread = 16;
+
     udpPort = 31850;
 
     recover = ((env = getenv("RECOVER")) && strcmp(env, "OFF") && strcmp(env, "NO"));

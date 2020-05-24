@@ -34,6 +34,7 @@ struct CmdLineConfig
 
     int _N;
     int _Size;
+    int _Thread;
 };
 
 #define GALOIS_OPTION(t, p) { t, offsetof(CmdLineConfig, p), 1 }

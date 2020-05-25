@@ -213,7 +213,7 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
             uint8_t *base = rdma->getReadRegion(peerId);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
             rdma->pollSendCompletion(wc);
-	    recoverSrc[i] = base;
+            recoverSrc[i] = base;
         }
         else
             recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));

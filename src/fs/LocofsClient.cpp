@@ -636,6 +636,7 @@ int main(int argc, char **argv)
     for (int i = 0; i < M; ++i)
         buf[i] = 'p';
 
+/*
     d_info("start r/w...");
 
     auto start = steady_clock::now();
@@ -699,6 +700,51 @@ int main(int argc, char **argv)
         double thpt = 1000 * 1.0 * thnum / timespan * 100000;
         printf("%d thread(s): %.1lf\n\n", thnum, thpt);
     }
+*/
+
+    // Test availability
+    auto stt = steady_clock::now();
+    decltype(stt) Begin, End;
+    std::vector<int> latw, latr;
+    size_t Cnt = 0;
+    int Trigger = 0;
+    while (true) {
+        Begin = steady_clock::now();
+        int dur = duration_cast<seconds>(Begin - stt).count();
+
+        if (dur >= 10)
+            break;
+        if (dur >= 4) {
+            loco.getECAL()->getRDMASocket()->__markAsDead(0);
+            Cnt = latw.size();
+        }
+
+        ++Trigger;
+        if (Trigger == 10)
+            Trigger = 0;
+        
+        Begin = steady_clock::now();
+        loco.write(filename, buf, 4096, 0);
+        End = steady_clock::now();
+        if (!Trigger)
+            latw.push_back(duration_cast<microseconds>(End - Begin).count());
+
+        Begin = steady_clock::now();
+        loco.read(filename, buf, 4096, 0);
+        End = steady_clock::now();
+        if (!Trigger)
+            latr.push_back(duration_cast<microseconds>(End - Begin).count());
+    }
+
+    FILE *fout = fopen("log.txt", "w");
+    for (int i = 0; i < latw.size(); ++i)
+        fprintf(fout, "%d ", latw[i]);
+    fprintf(fout, "\n");
+    for (int i = 0; i < latw.size(); ++i)
+        fprintf(fout, "%d ", latr[i]);
+    fprintf(fout, "\n");
+    fclose(fout);
+
     loco.stop();
 #else
     cmdConf = new CmdLineConfig;

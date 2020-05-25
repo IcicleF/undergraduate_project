@@ -336,6 +336,7 @@ void RDMASocket::buildConnection(rdma_cm_id *cmId)
     peer->cmId = cmId;
     peer->qp = cmId->qp;
     peer->connected = false;
+    peer->forcedConnStat = 0;
     peer->sendRegion = new uint8_t[RDMA_BUF_SIZE];
     peer->recvRegion = new uint8_t[RDMA_BUF_SIZE];
     peer->writeRegion = new uint8_t[Block4K::capacity * RDMAConnection::NConcurrency];
@@ -414,6 +415,8 @@ bool RDMASocket::isPeerAlive(int peerId)
 {
     if (peerId == myNodeConf->id)
         return true;
+    if (peers[peerId].forcedConnStat)
+        return peers[peerId].forcedConnStat > 0;
     return peers[peerId].connected;
 }
 

@@ -33,6 +33,7 @@ struct RDMAConnection
 
     int peerId;
     bool connected;
+    int forcedConnStat;
 
     rdma_cm_id *cmId;                   /* CM: allocated */
     ibv_qp *qp;                         /* QP: allocated */
@@ -69,6 +70,10 @@ public:
     ~RDMASocket();
     RDMASocket(const RDMASocket &) = delete;
     RDMASocket &operator=(const RDMASocket &) = delete;
+
+    inline void __markAsAlive(int peerId) { peers[peerId].forcedConnStat = 1; }
+    inline void __markAsDead(int peerId) { peers[peerId].forcedConnStat = -1; }
+    inline void __cancelMarking(int peerId) { peers[peerId].forcedConnStat = 0; }
 
     void verboseQP(int peerId);
     bool isPeerAlive(int peerId);

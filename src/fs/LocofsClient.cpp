@@ -690,13 +690,13 @@ int main(int argc, char **argv)
 
         start = steady_clock::now();
         for (int i = 1; i <= thnum; ++i)
-            ths[i] = std::thread(thptWorker, &loco, false, 100000);
+            ths[i] = std::thread(thptWorker, &loco, true, 100000);
         for (int i = 1; i <= thnum; ++i)
             ths[i].join();
         end = steady_clock::now();
         timespan = duration_cast<milliseconds>(end - start).count();
 
-        double thpt = 100000 * 1.0 * thnum / timespan * 1000;
+        double thpt = 1000 * 1.0 * thnum / timespan * 100000;
         printf("%d thread(s): %.1lf\n\n", thnum, thpt);
     }
     loco.stop();

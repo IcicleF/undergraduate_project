@@ -80,7 +80,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *  Write data begin
      */
     int64_t block_size = loco_st.block_size;
-    int64_t offset = off;
+    int64_t offset = off, length = len;
     int64_t start = 0;
 
     ECAL::Page page;
@@ -130,7 +130,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      */
     FileContentInode fci;
     _set_ContentInode(loco_st, fci);
-    fci.size = fci.size > (off + len) ? fci.size : (off + len);
+    fci.size = fci.size > (off + length) ? fci.size : (off + length);
     
     //stt = steady_clock::now();
     ValueWithPathRequest request;
@@ -192,7 +192,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
 
         uint64_t blkno = hashObj(loco_st, block_num) % ecal.getClusterCapacity();
         ecal.readBlock(blkno, page);
-	memcpy(buf + start, page.page.data + block_off,  block_len);
+        memcpy(buf + start, page.page.data + block_off,  block_len);
         
         start += block_len;
         len -= block_len;
@@ -609,7 +609,6 @@ void thptWorker(LocofsClient *cli, bool wl, int n = 100000)
 
 int main(int argc, char **argv)
 {
-#if 1
     using namespace std;
     using namespace std::chrono;
 
@@ -636,7 +635,6 @@ int main(int argc, char **argv)
     for (int i = 0; i < M; ++i)
         buf[i] = 'p';
 
-/*
     d_info("start r/w...");
 
     auto start = steady_clock::now();
@@ -684,7 +682,7 @@ int main(int argc, char **argv)
     //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
     //printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
-
+/*
     const int thnum = cmdConf->_Thread;
     if (thnum) {
         std::thread ths[16];
@@ -700,7 +698,7 @@ int main(int argc, char **argv)
         double thpt = 1000 * 1.0 * thnum / timespan * 100000;
         printf("%d thread(s): %.1lf\n\n", thnum, thpt);
     }
-*/
+
 
     loco.write(filename, buf, 4096, 0);
 
@@ -736,22 +734,12 @@ int main(int argc, char **argv)
     }
 
     FILE *fout = fopen("log.txt", "w");
-    fprintf(fout, "%d\n", Cnt);
     for (int i = 0; i < latw.size(); ++i)
         fprintf(fout, "%d ", latr[i]);
     fprintf(fout, "\n");
     fclose(fout);
-
+*/
     loco.stop();
-#else
-    cmdConf = new CmdLineConfig;
-    memConf = new MemoryConfig(*cmdConf);
-    clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
-    auto myself = clusterConf->findMyself();
-    myNodeConf = new NodeConfig(myself);
-    
-    NetworkInterface netif;
-#endif
 
     return 0;
 }

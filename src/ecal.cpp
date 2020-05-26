@@ -184,6 +184,7 @@ int readCount = 0, writeCount = 0;
 
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
+#if 0
     int decodeIndex[K], errIndex[K];
     int cnt = 0, availMap = 0;
     uint8_t *bases[N];
@@ -231,16 +232,50 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
         if (decodeIndex[i] < K)
             memcpy(page.page.data + decodeIndex[i] * BlockTy::size, recoverSrc[i], BlockTy::size);
 
-    if (errs == 0) {
-#ifndef USE_RPC
-        for (int i = 0; i < K; ++i) {
-            int peerId = (decodeIndex[i] + pos.startNodeId) % N;
-            if (peerId != myNodeConf->id)
-                rdma->freeReadRegion(peerId, recoverSrc[i]);
-        }
-#endif
+    if (errs == 0)
         return;
+#else
+    int decodeIndex[K], errIndex[K];
+    uint8_t *recoverSrc[N], *recoverOutput[N];
+
+    page.index = index;
+    memset(page.page.data, 0, Block4K::capacity);
+
+    auto pos = getDataPos(index);
+    int errs = 0;
+    for (int i = 0, j = 0; i < K && j < N; ++j) {
+        int peerId = (j + pos.startNodeId) % N;
+        if (rdma->isPeerAlive(peerId)) 
+            decodeIndex[i++] = j;
+        else if (j < K) {
+            errIndex[errs] = j;
+            recoverOutput[errs++] = page.page.data + j * BlockTy::size;
+        }
     }
+
+    /* Read data blocks from remote (or self) */
+    uint64_t blockShift = getBlockShift(pos.row);
+    ibv_wc wc[2];
+    for (int i = 0; i < K; ++i) {
+        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
+        if (peerId != myNodeConf->id) {
+            uint8_t *base = rdma->getReadRegion(peerId);
+            rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
+            rdma->pollSendCompletion(wc);
+            recoverSrc[i] = base;
+        }
+        else
+            recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+    }
+
+    /* Copy intact data */
+    for (int i = 0; i < K; ++i)
+        if (decodeIndex[i] < K)
+            memcpy(page.page.data + decodeIndex[i] * BlockTy::size, recoverSrc[i], BlockTy::size);
+
+    if (errs == 0)
+        return;
+#endif
     
     /* Perform decode */
     uint8_t decodeMatrix[N * K];

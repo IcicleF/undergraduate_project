@@ -185,57 +185,46 @@ int readCount = 0, writeCount = 0;
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
     int decodeIndex[K], errIndex[K];
+    int cnt = 0, availMap = 0;
+    uint8_t *bases[N];
     uint8_t *recoverSrc[N], *recoverOutput[N];
 
     page.index = index;
     memset(page.page.data, 0, Block4K::capacity);
 
     auto pos = getDataPos(index);
-    int errs = 0;
-    for (int i = 0, j = 0; i < K && j < N; ++j) {
-        int peerId = (j + pos.startNodeId) % N;
-        if (rdma->isPeerAlive(peerId)) 
-            decodeIndex[i++] = j;
-        else if (j < K) {
-            errIndex[errs] = j;
-            recoverOutput[errs++] = page.page.data + j * BlockTy::size;
-        }
-    }
 
-#ifndef USE_RPC
     /* Read data blocks from remote (or self) */
     uint64_t blockShift = getBlockShift(pos.row);
-    int taskCnt = 0;
-    ibv_wc wc[2];
-    for (int i = 0; i < K; ++i) {
-        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
+    int taskCnt = K;
+    for (int i = 0; i < N; ++i) {
+        int peerId = (i + pos.startNodeId) % N;
         if (peerId != myNodeConf->id) {
             uint8_t *base = rdma->getReadRegion(peerId);
             rdma->postRead(peerId, blockShift, (uint64_t)base, BlockTy::size, i);
-            rdma->pollSendCompletion(wc);
-            recoverSrc[i] = base;
+            bases[i] = base;
         }
-        else
-            recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+        else {
+            recoverSrc[cnt] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+            decodeIndex[cnt++] = i;
+            availMap |= 1 << i;
+            --taskCnt;
+        }
     }
-#else
-    static MemResponse resps[N];
-    int respId = 0;
 
-    uint64_t blockShift = getBlockShift(pos.row);
-    for (int i = 0; i < K; ++i) {
-        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
-        if (peerId != myNodeConf->id) {
-            PureValueRequest req;
-            req.value = blockShift;
-            netif->rpcCall(peerId, ErpcType::ERPC_MEMREAD, req, resps[respId]);
-            recoverSrc[i] = resps[respId].data;
-            respId++;
-        }
-        else
-            recoverSrc[i] = reinterpret_cast<uint8_t *>(allocTable->at(pos.row));
+    ibv_wc wc[MAX_NODES];
+    rdma->pollSendCompletion(wc, taskCnt);
+    for (int i = 0; i < taskCnt; ++i) {
+        int j = WRID_TASK(wc[i].wr_id);
+        recoverSrc[cnt] = bases[j];
+        decodeIndex[cnt++] = j;
+        availMap |= 1 << j;
     }
-#endif
+
+    int errs = 0;
+    for (int i = 0; i < N; ++i)
+        if ((availMap & (1 << i)) == 0)
+            recoverOutput[errs++] = page.page.data + i * BlockTy::size;
 
     /* Copy intact data */
     for (int i = 0; i < K; ++i)

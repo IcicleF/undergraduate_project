@@ -702,12 +702,16 @@ int main(int argc, char **argv)
     }
 */
 
-    // Test availability
+    loco.write(filename, buf, 4096, 0);
+
+    // Test first-k read
     auto stt = steady_clock::now();
     decltype(stt) Begin, End;
     std::vector<int> latw, latr;
     size_t Cnt = 0;
     int Trigger = 0;
+    ibv_wc wc[2];
+    
     while (true) {
         Begin = steady_clock::now();
         int dur = duration_cast<seconds>(Begin - stt).count();
@@ -724,22 +728,14 @@ int main(int argc, char **argv)
             Trigger = 0;
         
         Begin = steady_clock::now();
-        loco.write(filename, buf, 4096, 0);
-        End = steady_clock::now();
-        if (!Trigger)
-            latw.push_back(duration_cast<microseconds>(End - Begin).count());
-
-        Begin = steady_clock::now();
         loco.read(filename, buf, 4096, 0);
         End = steady_clock::now();
+        loco.getECAL()->getRDMASocket()->pollSendCompletion(wc);
         if (!Trigger)
             latr.push_back(duration_cast<microseconds>(End - Begin).count());
     }
 
     FILE *fout = fopen("log.txt", "w");
-    for (int i = 0; i < latw.size(); ++i)
-        fprintf(fout, "%d ", latw[i]);
-    fprintf(fout, "\n");
     for (int i = 0; i < latw.size(); ++i)
         fprintf(fout, "%d ", latr[i]);
     fprintf(fout, "\n");

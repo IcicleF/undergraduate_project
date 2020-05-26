@@ -714,10 +714,10 @@ int main(int argc, char **argv)
 
         if (dur >= 10)
             break;
-        if (dur >= 4) {
-            loco.getECAL()->getRDMASocket()->__markAsDead(0);
-            Cnt = latw.size();
-        }
+        //if (dur >= 4 && !Cnt) {
+        //    loco.getECAL()->getRDMASocket()->__markAsDead(0);
+        //    Cnt = latw.size();
+        //}
 
         ++Trigger;
         if (Trigger == 10)
@@ -737,6 +737,7 @@ int main(int argc, char **argv)
     }
 
     FILE *fout = fopen("log.txt", "w");
+    fprintf(fout, "%d\n", Cnt);
     for (int i = 0; i < latw.size(); ++i)
         fprintf(fout, "%d ", latw[i]);
     fprintf(fout, "\n");

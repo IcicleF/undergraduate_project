@@ -688,9 +688,6 @@ int main(int argc, char **argv)
         printf("%d thread(s): %.1lf\n\n", thnum, thpt);
     }
 */
-
-    loco.write(filename, buf, 4096, 0);
-
     // Test first-k read
     auto stt = steady_clock::now();
     decltype(stt) Begin, End;
@@ -723,7 +720,6 @@ int main(int argc, char **argv)
         fprintf(fout, "%d ", latr[i]);
     fprintf(fout, "\n");
     fclose(fout);
-
     loco.stop();
 
     return 0;

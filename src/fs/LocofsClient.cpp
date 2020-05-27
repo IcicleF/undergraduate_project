@@ -80,7 +80,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      *  Write data begin
      */
     int64_t block_size = loco_st.block_size;
-    int64_t offset = off;
+    int64_t offset = off, length = len;
     int64_t start = 0;
 
     ECAL::Page page;
@@ -130,7 +130,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
      */
     FileContentInode fci;
     _set_ContentInode(loco_st, fci);
-    fci.size = fci.size > (off + len) ? fci.size : (off + len);
+    fci.size = fci.size > (off + length) ? fci.size : (off + length);
     
     //stt = steady_clock::now();
     ValueWithPathRequest request;
@@ -192,7 +192,7 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
 
         uint64_t blkno = hashObj(loco_st, block_num) % ecal.getClusterCapacity();
         ecal.readBlock(blkno, page);
-	memcpy(buf + start, page.page.data + block_off,  block_len);
+        memcpy(buf + start, page.page.data + block_off,  block_len);
         
         start += block_len;
         len -= block_len;
@@ -200,16 +200,6 @@ int64_t LocofsClient::read(const std::string &path, char *buf, int64_t len, int6
     }
     //edt = steady_clock::now();
     //data_rdma_time_r += duration_cast<microseconds>(edt - stt).count();
-
-    /**
-     *  Get Key_FileInode
-     */
-    std::string Key_File;
-    //stt = steady_clock::now();
-    if (_get_file_key(path, Key_File) == false)
-        return false;
-    //edt = steady_clock::now();
-    //meta_rpc_time += duration_cast<microseconds>(edt - stt).count();
     
     return start;
 }
@@ -609,7 +599,6 @@ void thptWorker(LocofsClient *cli, bool wl, int n = 100000)
 
 int main(int argc, char **argv)
 {
-#if 1
     using namespace std;
     using namespace std::chrono;
 
@@ -635,7 +624,6 @@ int main(int argc, char **argv)
     char buf[M];
     for (int i = 0; i < M; ++i)
         buf[i] = 'p';
-
 /*
     d_info("start r/w...");
 
@@ -684,7 +672,6 @@ int main(int argc, char **argv)
     //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
     //printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
 
-
     const int thnum = cmdConf->_Thread;
     if (thnum) {
         std::thread ths[16];
@@ -702,60 +689,42 @@ int main(int argc, char **argv)
     }
 */
 
-    // Test availability
+    loco.write(filename, buf, 4096, 0);
+
+    // Test first-k read
     auto stt = steady_clock::now();
     decltype(stt) Begin, End;
     std::vector<int> latw, latr;
     size_t Cnt = 0;
     int Trigger = 0;
+    ibv_wc wc[2];
+    
     while (true) {
         Begin = steady_clock::now();
         int dur = duration_cast<seconds>(Begin - stt).count();
 
-        if (dur >= 10)
+        if (dur >= 20)
             break;
-        //if (dur >= 4 && !Cnt) {
-        //    loco.getECAL()->getRDMASocket()->__markAsDead(0);
-        //    Cnt = latw.size();
-        //}
 
         ++Trigger;
         if (Trigger == 10)
             Trigger = 0;
         
         Begin = steady_clock::now();
-        loco.write(filename, buf, 4096, 0);
-        End = steady_clock::now();
-        if (!Trigger)
-            latw.push_back(duration_cast<microseconds>(End - Begin).count());
-
-        Begin = steady_clock::now();
         loco.read(filename, buf, 4096, 0);
         End = steady_clock::now();
+        loco.getECAL()->getRDMASocket()->pollSendCompletion(wc);
         if (!Trigger)
             latr.push_back(duration_cast<microseconds>(End - Begin).count());
     }
 
     FILE *fout = fopen("log.txt", "w");
-    fprintf(fout, "%d\n", Cnt);
-    for (int i = 0; i < latw.size(); ++i)
-        fprintf(fout, "%d ", latw[i]);
-    fprintf(fout, "\n");
-    for (int i = 0; i < latw.size(); ++i)
+    for (int i = 0; i < latr.size(); ++i)
         fprintf(fout, "%d ", latr[i]);
     fprintf(fout, "\n");
     fclose(fout);
 
     loco.stop();
-#else
-    cmdConf = new CmdLineConfig;
-    memConf = new MemoryConfig(*cmdConf);
-    clusterConf = new ClusterConfig(cmdConf->clusterConfigFile);
-    auto myself = clusterConf->findMyself();
-    myNodeConf = new NodeConfig(myself);
-    
-    NetworkInterface netif;
-#endif
 
     return 0;
 }

@@ -60,8 +60,8 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     using std::chrono::duration_cast;
     using std::chrono::microseconds;
 
-    //auto stt = steady_clock::now();
-    //auto edt = steady_clock::now();
+    auto stt = steady_clock::now();
+    auto edt = steady_clock::now();
 
     //printf("entry "); fflush(stdout);
 
@@ -84,7 +84,7 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
     int64_t start = 0;
 
     ECAL::Page page;
-    //stt = steady_clock::now();
+    stt = steady_clock::now();
     while (len > 0) {
         int64_t block_num = offset / block_size;            // # of data block
         int64_t block_off = offset % block_size;            // offset in the current block
@@ -108,8 +108,8 @@ bool LocofsClient::write(const std::string &path, const char *buf, int64_t len, 
         len -= block_len;
         offset += block_len;
     }
-    //edt = steady_clock::now();
-    //data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
+    edt = steady_clock::now();
+    data_rdma_time_w += duration_cast<microseconds>(edt - stt).count();
 
     //d_info("EC & RDMA succ");
 
@@ -624,7 +624,7 @@ int main(int argc, char **argv)
     char buf[M];
     for (int i = 0; i < M; ++i)
         buf[i] = 'p';
-/*
+
     d_info("start r/w...");
 
     auto start = steady_clock::now();
@@ -639,7 +639,7 @@ int main(int argc, char **argv)
     //printf("Breakdown:\n");
     //printf("- Boost CPU computation: %.2lf us\n", (double)boost_cpu_time / N);
     //printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
-    //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
+    printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_w / N);
     //printf("\n");
 
     loco.testRoundTrip(0);
@@ -671,7 +671,7 @@ int main(int argc, char **argv)
     //printf("- Metadata fetch RPC: %.2lf us\n", (double)meta_rpc_time / N);
     //printf("- Data RDMA: %.2lf us\n", (double)data_rdma_time_r / N);
     //printf("- Metadata update RPC: %.2lf us\n\n", (double)meta_upd_time_r / N);
-
+/*
     const int thnum = cmdConf->_Thread;
     if (thnum) {
         std::thread ths[16];
@@ -687,7 +687,7 @@ int main(int argc, char **argv)
         double thpt = 1000 * 1.0 * thnum / timespan * 100000;
         printf("%d thread(s): %.1lf\n\n", thnum, thpt);
     }
-*/
+
     // Test first-k read
     auto stt = steady_clock::now();
     decltype(stt) Begin, End;
@@ -710,7 +710,7 @@ int main(int argc, char **argv)
         Begin = steady_clock::now();
         loco.read(filename, buf, 4096, 0);
         End = steady_clock::now();
-        loco.getECAL()->getRDMASocket()->pollSendCompletion(wc);
+        //loco.getECAL()->getRDMASocket()->pollSendCompletion(wc);
         if (!Trigger)
             latr.push_back(duration_cast<microseconds>(End - Begin).count());
     }
@@ -720,6 +720,7 @@ int main(int argc, char **argv)
         fprintf(fout, "%d ", latr[i]);
     fprintf(fout, "\n");
     fclose(fout);
+*/
     loco.stop();
 
     return 0;

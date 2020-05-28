@@ -184,7 +184,7 @@ int readCount = 0, writeCount = 0;
 
 void ECAL::readBlock(uint64_t index, ECAL::Page &page)
 {
-#if 1
+#if 0
     int decodeIndex[K], errIndex[K];
     int cnt = 0, availMap = 0;
     uint8_t *bases[N];
@@ -307,10 +307,10 @@ void ECAL::readBlock(uint64_t index, ECAL::Page &page)
     ec_init_tables(K, errs, decodeMatrix, gfTbls);
     ec_encode_data(BlockTy::size, K, errs, gfTbls, recoverSrc, recoverOutput);
 
-    for (int i = 0; i < N; ++i) {
-        int peerId = (i + pos.startNodeId) % N;
+    for (int i = 0; i < K; ++i) {
+        int peerId = (decodeIndex[i] + pos.startNodeId) % N;
         if (peerId != myNodeConf->id)
-            rdma->freeReadRegion(peerId, bases[i]);
+            rdma->freeReadRegion(peerId, recoverSrc[i]);
     }
 }
 
